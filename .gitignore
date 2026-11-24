@@ -1,0 +1,22 @@
+# Gradle & Android
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing & Secrets
+keystore.properties
+*.jks
+*.keystore
+
+# Logs & Runtime Dumps (may contain PII / device IDs)
+*.log
+*.hprof
+raw_logs/
+device_backups/
