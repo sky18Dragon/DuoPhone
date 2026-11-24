@@ -51,17 +51,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duophone.app.data.CallLogRecord
 import com.duophone.app.data.SmsRecord
 import com.duophone.app.data.SmsThreadSummary
 import com.duophone.app.diagnostics.HostHardwareSnapshot
 import com.duophone.app.diagnostics.LogCategory
 import com.duophone.app.diagnostics.LogEntry
 import com.duophone.app.diagnostics.PiiRedactor
+import com.duophone.app.domain.CallUiState
 import com.duophone.app.domain.ModemConnectionState
 import com.duophone.app.domain.ModemUiState
 
 enum class DuoTab(val title: String) {
     STATUS("模块状态"),
+    CALL("电话"),
     SMS("短信"),
     AT_CONSOLE("AT 调试终端"),
     DIAGNOSTICS("设备与日志诊断"),
@@ -94,6 +97,8 @@ fun DuoPhoneScreen(
     isSmsSyncing: Boolean,
     smsSyncStatus: String,
     selectedSmsAddress: String?,
+    callState: CallUiState,
+    callLogs: List<CallLogRecord>,
     snackbarHostState: SnackbarHostState,
     onConnect: () -> Unit,
     onRefreshTelemetry: () -> Unit,
@@ -107,6 +112,16 @@ fun DuoPhoneScreen(
     onSimulateIncomingSms: () -> Unit,
     onCopyOtp: (String) -> Unit,
     onDeleteSms: (Long) -> Unit,
+    onDial: (String) -> Unit,
+    onAnswerCall: () -> Unit,
+    onHangupOrRejectCall: () -> Unit,
+    onSendDtmf: (String) -> Unit,
+    onToggleCallMute: () -> Unit,
+    onToggleCallSpeaker: () -> Unit,
+    onSimulateIncomingCall: () -> Unit,
+    onSimulateOutgoingCall: (String) -> Unit,
+    onDeleteCallLog: (Long) -> Unit,
+    onClearCallLogs: () -> Unit,
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -192,6 +207,21 @@ fun DuoPhoneScreen(
         ) {
             when (selectedTab) {
                 DuoTab.STATUS -> StatusDashboard(modemState = modemState)
+                DuoTab.CALL -> CallTabScreen(
+                    callState = callState,
+                    callLogs = callLogs,
+                    modemReady = modemState.activeAtInterfaceId >= 0,
+                    onDial = onDial,
+                    onAnswer = onAnswerCall,
+                    onHangupOrReject = onHangupOrRejectCall,
+                    onSendDtmf = onSendDtmf,
+                    onToggleMute = onToggleCallMute,
+                    onToggleSpeaker = onToggleCallSpeaker,
+                    onSimulateIncoming = onSimulateIncomingCall,
+                    onSimulateOutgoing = onSimulateOutgoingCall,
+                    onDeleteCallLog = onDeleteCallLog,
+                    onClearCallLogs = onClearCallLogs,
+                )
                 DuoTab.SMS -> SmsTabScreen(
                     messages = smsMessages,
                     threads = smsThreads,

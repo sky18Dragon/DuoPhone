@@ -20,6 +20,7 @@ import com.duophone.app.R
 import com.duophone.app.device.AndroidUsbSerialTransport
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.LogCategory
+import com.duophone.app.domain.CallController
 import com.duophone.app.domain.ModemConnectionState
 import com.duophone.app.domain.ModemController
 import com.duophone.app.domain.ModemUiState
@@ -58,6 +59,7 @@ class ModemService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var controller: ModemController
     private lateinit var smsController: SmsServiceController
+    private lateinit var callController: CallController
     private var lastConnectionState: ModemConnectionState = ModemConnectionState.DISCONNECTED
     private var receiversRegistered = false
 
@@ -84,6 +86,7 @@ class ModemService : Service() {
         val app = application as DuoPhoneApplication
         controller = app.modemController
         smsController = app.smsController
+        callController = app.callController
 
         createNotificationChannel()
         promoteToForeground(controller.state.value)
@@ -96,9 +99,13 @@ class ModemService : Service() {
                     val prev = lastConnectionState
                     lastConnectionState = state.connectionState
                     if (state.connectionState == ModemConnectionState.READY && prev != ModemConnectionState.READY) {
-                        serviceScope.launch(Dispatchers.IO) { smsController.syncFromModem(notifyNew = false) }
+                        serviceScope.launch(Dispatchers.IO) {
+                            smsController.syncFromModem(notifyNew = false)
+                            callController.ensureCallControlReady()
+                        }
                     } else if (state.connectionState == ModemConnectionState.DISCONNECTED) {
                         smsController.onModemDisconnected()
+                        callController.onModemDisconnected()
                     }
                 }
             }
