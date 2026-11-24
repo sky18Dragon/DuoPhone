@@ -13,8 +13,10 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,8 +34,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private var selectedTab by mutableStateOf(DuoTab.STATUS)
+    private var selectedSmsAddress by mutableStateOf<String?>(null)
     private lateinit var hostHardware: HostHardwareSnapshot
     private var hardwareState by mutableStateOf<HostHardwareSnapshot?>(null)
+    private val snackbarHostState = SnackbarHostState()
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -50,7 +54,9 @@ class MainActivity : ComponentActivity() {
 
         val app = application as DuoPhoneApplication
         val controller = app.modemController
+        val smsController = app.smsController
 
+        handleNavigationIntent(intent)
         requestNotificationPermissionIfNeeded()
         ModemService.start(this, triggerConnect = true)
 
@@ -61,12 +67,25 @@ class MainActivity : ComponentActivity() {
             DuoPhoneTheme {
                 val modemState by controller.state.collectAsStateWithLifecycle()
                 val logs by DuoLogger.entries.collectAsStateWithLifecycle()
+                val smsMessages by smsController.messages.collectAsStateWithLifecycle()
+                val isSmsSyncing by smsController.isSyncing.collectAsStateWithLifecycle()
+                val smsSyncStatus by smsController.lastSyncStatus.collectAsStateWithLifecycle()
+                val smsThreads = remember(smsMessages) {
+                    app.smsRepository.buildThreads(smsMessages)
+                }
+
                 DuoPhoneScreen(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
                     modemState = modemState,
                     hostHardware = hardwareState ?: hostHardware,
                     logs = logs,
+                    smsMessages = smsMessages,
+                    smsThreads = smsThreads,
+                    isSmsSyncing = isSmsSyncing,
+                    smsSyncStatus = smsSyncStatus,
+                    selectedSmsAddress = selectedSmsAddress,
+                    snackbarHostState = snackbarHostState,
                     onConnect = { lifecycleScope.launch { controller.connect() } },
                     onRefreshTelemetry = {
                         lifecycleScope.launch { controller.refreshTelemetry(includeIdentityAndConfig = true) }
@@ -79,6 +98,41 @@ class MainActivity : ComponentActivity() {
                     },
                     onClearConsole = { controller.clearConsole() },
                     onClearLogs = { DuoLogger.clear() },
+                    onSelectSmsAddress = { addr ->
+                        selectedSmsAddress = addr
+                        if (addr != null) {
+                            lifecycleScope.launch { smsController.markThreadRead(addr) }
+                        }
+                    },
+                    onSyncSms = {
+                        lifecycleScope.launch { smsController.syncFromModem(notifyNew = false) }
+                    },
+                    onSendSms = { number, body ->
+                        lifecycleScope.launch {
+                            val res = smsController.sendSms(number, body)
+                            val msg = if (res.success) {
+                                "短信已发送 (${res.segmentsSent}/${res.totalSegments} 分片)"
+                            } else {
+                                res.errorMessage ?: "发送失败"
+                            }
+                            snackbarHostState.showSnackbar(msg)
+                        }
+                    },
+                    onSimulateIncomingSms = {
+                        lifecycleScope.launch {
+                            smsController.injectSimulatedIncomingSms(
+                                "+8613800138000",
+                                "【DuoPhone 模拟测试】您的登录验证码为 619204，仅用于无硬件 App 通知与持久化验证。",
+                            )
+                            snackbarHostState.showSnackbar("已写入模拟收件短信并触发通知")
+                        }
+                    },
+                    onCopyOtp = { otp ->
+                        lifecycleScope.launch { snackbarHostState.showSnackbar("已复制验证码：$otp") }
+                    },
+                    onDeleteSms = { id ->
+                        lifecycleScope.launch { smsController.deleteLocalMessage(id) }
+                    },
                 )
             }
         }
@@ -86,9 +140,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         if (intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
             (application as DuoPhoneApplication).modemController.onUsbDeviceAttached()
         }
+        handleNavigationIntent(intent)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -106,7 +162,26 @@ class MainActivity : ComponentActivity() {
                 DuoLogger.d(LogCategory.INPUT, "gamepad_r1", "Switched tab -> ${selectedTab.name}")
                 true
             }
+            KeyEvent.KEYCODE_BUTTON_SELECT -> {
+                selectedTab = DuoTab.SMS
+                DuoLogger.d(LogCategory.INPUT, "gamepad_select", "Switched tab -> SMS")
+                true
+            }
             else -> super.onKeyDown(keyCode, event)
+        }
+    }
+
+    private fun handleNavigationIntent(intent: Intent?) {
+        val openTab = intent?.getStringExtra("open_tab")
+        if (openTab == "SMS") {
+            selectedTab = DuoTab.SMS
+            val addr = intent.getStringExtra("sms_address")
+            if (!addr.isNullOrBlank()) {
+                selectedSmsAddress = addr
+                lifecycleScope.launch {
+                    (application as DuoPhoneApplication).smsController.markThreadRead(addr)
+                }
+            }
         }
     }
 

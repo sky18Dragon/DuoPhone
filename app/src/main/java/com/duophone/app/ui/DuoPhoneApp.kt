@@ -31,6 +31,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -49,6 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duophone.app.data.SmsRecord
+import com.duophone.app.data.SmsThreadSummary
 import com.duophone.app.diagnostics.HostHardwareSnapshot
 import com.duophone.app.diagnostics.LogCategory
 import com.duophone.app.diagnostics.LogEntry
@@ -58,6 +62,7 @@ import com.duophone.app.domain.ModemUiState
 
 enum class DuoTab(val title: String) {
     STATUS("模块状态"),
+    SMS("短信"),
     AT_CONSOLE("AT 调试终端"),
     DIAGNOSTICS("设备与日志诊断"),
 }
@@ -84,16 +89,29 @@ fun DuoPhoneScreen(
     modemState: ModemUiState,
     hostHardware: HostHardwareSnapshot,
     logs: List<LogEntry>,
+    smsMessages: List<SmsRecord>,
+    smsThreads: List<SmsThreadSummary>,
+    isSmsSyncing: Boolean,
+    smsSyncStatus: String,
+    selectedSmsAddress: String?,
+    snackbarHostState: SnackbarHostState,
     onConnect: () -> Unit,
     onRefreshTelemetry: () -> Unit,
     onRefreshHostHardware: () -> Unit,
     onRunAtCommand: (String) -> Unit,
     onClearConsole: () -> Unit,
     onClearLogs: () -> Unit,
+    onSelectSmsAddress: (String?) -> Unit,
+    onSyncSms: () -> Unit,
+    onSendSms: (String, String) -> Unit,
+    onSimulateIncomingSms: () -> Unit,
+    onCopyOtp: (String) -> Unit,
+    onDeleteSms: (Long) -> Unit,
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = DuoBg,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column(
                 modifier = Modifier
@@ -174,6 +192,20 @@ fun DuoPhoneScreen(
         ) {
             when (selectedTab) {
                 DuoTab.STATUS -> StatusDashboard(modemState = modemState)
+                DuoTab.SMS -> SmsTabScreen(
+                    messages = smsMessages,
+                    threads = smsThreads,
+                    modemReady = modemState.activeAtInterfaceId >= 0,
+                    isSyncing = isSmsSyncing,
+                    syncStatus = smsSyncStatus,
+                    selectedAddress = selectedSmsAddress,
+                    onSelectAddress = onSelectSmsAddress,
+                    onSyncSms = onSyncSms,
+                    onSendSms = onSendSms,
+                    onSimulateIncomingSms = onSimulateIncomingSms,
+                    onCopyOtp = onCopyOtp,
+                    onDeleteMessage = onDeleteSms,
+                )
                 DuoTab.AT_CONSOLE -> AtConsoleView(
                     modemState = modemState,
                     onRunAtCommand = onRunAtCommand,
