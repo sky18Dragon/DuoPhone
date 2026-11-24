@@ -53,6 +53,7 @@
 | `CALL-001` ~ `CALL-007`（真实运营商去电、来电、DTMF 与挂断） | `PASS` | `duophone-latest.log` 实机记录：`ATD` 去电成功并正确过滤 `+CLCC` 两条 `mode=1` 数据通道只保留语音通话；通话中发送 `AT+VTS="2/5/9/7/5/3/0"` 全部 `OK`；`ATH` 主动挂断成功；呼入 `RING` + `+CLIP` 号码显示正常 → `ATA` 接听 → 对端挂断 `NO CARRIER` 正常回退空闲 |
 | `CALL-008` ~ `CALL-010`（异常 `+CEER` / 锁屏来电）、`USB-004` ~ `USB-007`、`SMS-005` ~ `SMS-010`、`UI-003` ~ `UI-004` | `NOT_TESTED` | 待补测热插拔 20 次稳定性、锁屏通知细节及失败错误码分支 |
 | `AUDIO-001` ~ `AUDIO-004`（UAC 识别与双向 VoLTE 语音互通 — 独立验收项） | `PASS` | `22:08:55` 实机最终复测通过：`AT+QADBKEY` 解锁与 `usbcfg` 切为 `1,1`（保留 `0x2CA3:0x4006`）→ `/tmp/duophone-voice` 加载 `aprv3`/`voice` + ACDB VoLTE 校准 → `Baiwang` UAC 双向声卡（`8000 Hz`）识别；日志实证 `source=VOICE_COMMUNICATION aec=true ns=true agc=true`、`USAGE_ALARM` 上行 + `PcmVoiceConditioner`（`80–3400Hz` 带通 / `+9.5 dB` 软限幅 / 扬声器 NLP 回声衰减），**双路并发采集均 `zero=0` (`not silenced`)**，连续两通真实通话 `PID=1461` 均干净启停（`bridge_stopped` + `voice_route_stopped`）、零 ANR；用户实机确认：“对方听您说话音量明显清晰放大，回音明显减轻” |
-| `AUDIO-005` ~ `AUDIO-010`（30min 稳定性 / 蓝牙有线切换 / 重连恢复） | `NOT_TESTED` | 代码/单测已完成（蓝牙/3.5mm 热插拔切换、音量调节、重插 `/tmp` 自部署）；待实机专项验收 |
-| `SYS-001` ~ `SYS-008`（后台稳定性与合盖功耗） | `NOT_TESTED` | 代码已完成（通话 `PARTIAL_WAKE_LOCK`、`hall_switch`/亮灭屏监控、AT 心跳保活）；待实机专项验收 |
-| P1 新增交互（来电铃声/通知栏接听拒接/短信直复/通讯录导入） | `NOT_TESTED` | 代码与 47/47 单测通过；待安装到 Retroid Pocket Duo 后实机验收 |
+| `AUDIO-005` ~ `AUDIO-010`（30min 稳定性 / 蓝牙有线切换 / 重连恢复） | `NOT_TESTED` | 代码/单测已完成；用户确认蓝牙/3.5mm 有线耳机项延后实测，待专项验收 |
+| `SYS-003` ~ `SYS-005`（合盖 `hall_switch` / 灭屏 USB 供电与 AT 心跳保活） | `PASS` | `23:23:55`、`23:26:15`、`23:27:29` 三次合盖/灭屏日志实证：`displayId=0/2 state=1`，`I/DUO_POWER screen_off: modem=READY usbAttached=true`，灭屏期间 `23:27:31` 定时 `AT -> OK (5ms)` 持续存活；开盖秒恢复原界面（`state=2`、`modem=READY`）且全程零断连 |
+| `SYS-001` ~ `SYS-002`, `SYS-006` ~ `SYS-008`（8h 长时待机 / 连续压测） | `NOT_TESTED` | 待后续长时续航压测 |
+| P1 新增交互（来电铃声/振动、通话期 WakeLock、通知栏短信直复、通讯录授权与本地保存） | `PASS` | `23:24`–`23:25` 实机日志实证：`READ_CONTACTS granted=true`、`contacts_reload local=1`；真机呼入触发 `wakelock_acquire`、`ringtone_start: out=2:Retroid Pocket Duo` → `ATA` 接听停铃并启动 `PID=1493` 全双工语音（`zero=0`）→ 对端挂断 `NO CARRIER` 释放 `WakeLock` 与音频路由；收到新短信 `+CMTI: "ME",8` 后通过通知栏直复 `notif_action_reply` → `AT+CMGS=18` → `send_success: Sent 1/1 segments` |

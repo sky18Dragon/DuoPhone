@@ -54,7 +54,8 @@
 - [x] 实现来电铃声/振动控制器 `CallRingtoneController`（显式隔离 `Baiwang` UAC，仅从蓝牙/有线/扬声器响铃）与游戏友好型悬浮通知操作 `CallActionReceiver`（来电通知接听/拒接、通话常驻挂断、短信 `RemoteInput` 快捷回复与一键复制验证码）
 - [x] 实现通讯录管理与全局来电匹配：SQLite v2 `contacts` 表 + `ContactRepository`（本地 CRUD + `READ_CONTACTS` 只读融合去重）及 `CallScreen`/`SmsScreen`/`SecondaryDeckScreen` 全局姓名识别与双屏音量/路由控制（`ContactPhoneMatcherTest` PASS）
 - [x] 实现蓝牙 / 3.5mm 有线耳机 `AudioDeviceCallback` 热插拔自动切换、耳机态自动关闭扬声器回声压制、通话音量调节（`STREAM_VOICE_CALL`）与模块断电重插 `/tmp/duophone-voice` 自动恢复（`AudioRoutePolicyTest` PASS）
-- [ ] 实机专项验收：`AUDIO-006`~`AUDIO-010`（蓝牙/3.5mm 切换、拔插重连自恢复）、`SYS-001`~`SYS-008`（合盖 `hall_switch` 功耗与长时待机）、来电铃声与通知栏快捷键实测
+- [x] 实机验收 P1 基础通信与合盖保活（`23:24`–`23:27`）：通讯录 `READ_CONTACTS` 授权与本地建档、来电本机响铃（`ringtone_start out=2:Retroid Pocket Duo`）+ 通话期 `PARTIAL_WAKE_LOCK` + 全双工语音（`PID=1493`, `zero=0`）、短信通知栏直接回复（`AT+CMGS=18` `Sent 1/1`）、以及三次合盖/灭屏期间 USB 保持供电及 `AT -> OK` 心跳不断线（`SYS-003`~`SYS-005` PASS）
+- [ ] 待后续实机验收：`AUDIO-006`~`AUDIO-010`（蓝牙/3.5mm 有线耳机热插拔切换与音量调节，本次跳过延后）与 `SYS-007`~`SYS-008`（8h 长时待机压测）
 
 ## Phase 7：高级扩展（USB 4G 移动网络 / ECM / APN） — ⏳ 待开始
 - [ ] ECM 移动网络可行性研究、APN 配置与流量统计
