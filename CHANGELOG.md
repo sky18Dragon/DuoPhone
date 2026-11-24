@@ -4,6 +4,10 @@ All notable changes to Duo Phone will be documented in this file.
 
 ## [Unreleased]
 
+### Dual-Screen Landscape Dialpad & Header Layout Fix (2026-11-24)
+- Redesigned `CompactLandscapeDialer` and `CompactDtmfGrid` in `CallScreen.kt`, shared across `CallTabScreen` and `SecondaryDeckScreen.kt`: replaced the tall `OutlinedTextField` + fixed-height vertical stack with a `40dp` bordered `BasicTextField` bar, height-weighted 4x3 keypad rows, and a right-hand action column (`+号`/`退格`, `清空`, and prominent green `拨出 (ATD)`), eliminating bottom clipping on Retroid Pocket Duo `Display #0` and `Display #2`.
+- Switched active-call DTMF + control actions on both screens to a side-by-side layout and compacted headers/tab bars (`DuoPhoneApp.kt`, `SecondaryDeckScreen.kt`) with `navigationBarsPadding()` so top-right `重连` and bottom dial controls remain unclipped.
+
 ### Phase 4 — USB ADB Client, QDC507 Reversible Voice Runtime & UAC Audio Bridge (2026-11-24)
 - Implemented clean-room USB ADB wire framing (`AdbWireProtocol`, `AdbShellMarker`, `AdbSyncCodec`) and `AndroidUsbAdbClient` claiming only `FF/42/01` bulk endpoints (with explicit `AUTH` challenge abort and clean interface release).
 - Implemented `Qdc507VoiceRuntime` enforcing ADR-004 GPL-2.0 isolation (reads external assets from `filesDir/voice_runtime/` only after exact SHA-256 verification, pushes strictly to `/tmp/duophone-voice`, never writes persistent partitions, and never calls `rmmod`).

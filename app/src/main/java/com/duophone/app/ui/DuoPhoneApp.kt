@@ -6,11 +6,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -150,52 +152,66 @@ fun DuoPhoneScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         val dotColor = stateColor(modemState.connectionState)
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
+                                .size(9.dp)
                                 .clip(CircleShape)
                                 .background(dotColor),
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
                                 text = "DUO PHONE",
                                 color = DuoTextPrimary,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                letterSpacing = 1.2.sp,
+                                fontSize = 14.sp,
+                                letterSpacing = 1.sp,
                             )
                             Text(
                                 text = "${modemState.connectionState.label} · L1/R1 切换页签",
                                 color = DuoTextSecondary,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                             )
                         }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (secondaryDisplayId != null) {
-                            OutlinedButton(onClick = onLaunchSecondaryDeck) {
+                            OutlinedButton(
+                                onClick = onLaunchSecondaryDeck,
+                                modifier = Modifier.height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            ) {
                                 Text("下屏#$secondaryDisplayId", fontSize = 11.sp, color = DuoCyan)
                             }
                         }
-                        OutlinedButton(onClick = onRefreshTelemetry, enabled = !modemState.isBusy) {
-                            Text("刷新", fontSize = 12.sp)
+                        OutlinedButton(
+                            onClick = onRefreshTelemetry,
+                            enabled = !modemState.isBusy,
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        ) {
+                            Text("刷新", fontSize = 11.sp)
                         }
                         Button(
                             onClick = onConnect,
                             enabled = !modemState.isBusy,
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = DuoAccent),
                         ) {
                             Text(
                                 text = if (modemState.activeAtInterfaceId >= 0) "重连" else "连接模块",
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                             )
                         }
                     }
@@ -210,7 +226,8 @@ fun DuoPhoneScreen(
                         Tab(
                             selected = selectedTab == tab,
                             onClick = { onSelectTab(tab) },
-                            text = { Text(tab.title, fontSize = 13.sp, fontWeight = FontWeight.Medium) },
+                            modifier = Modifier.height(36.dp),
+                            text = { Text(tab.title, fontSize = 12.sp, fontWeight = FontWeight.Medium) },
                         )
                     }
                 }
@@ -221,7 +238,8 @@ fun DuoPhoneScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .navigationBarsPadding()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         ) {
             when (selectedTab) {
                 DuoTab.STATUS -> StatusDashboard(modemState = modemState)
