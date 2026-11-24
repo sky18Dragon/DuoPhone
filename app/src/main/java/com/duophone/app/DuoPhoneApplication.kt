@@ -2,7 +2,9 @@ package com.duophone.app
 
 import android.app.Application
 import com.duophone.app.audio.AndroidAudioBridge
+import com.duophone.app.audio.CallRingtoneController
 import com.duophone.app.data.CallLogRepository
+import com.duophone.app.data.ContactRepository
 import com.duophone.app.data.DuoDatabaseHelper
 import com.duophone.app.data.SmsRepository
 import com.duophone.app.device.AndroidUsbAdbClient
@@ -14,12 +16,20 @@ import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.FileAndAndroidLogSink
 import com.duophone.app.diagnostics.LogCategory
 import com.duophone.app.domain.CallController
+import com.duophone.app.domain.CallUiPhase
 import com.duophone.app.domain.ModemController
 import com.duophone.app.domain.SmsServiceController
 import com.duophone.app.service.SmsNotificationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 
 class DuoPhoneApplication : Application() {
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     lateinit var dbHelper: DuoDatabaseHelper
         private set
 
@@ -27,6 +37,9 @@ class DuoPhoneApplication : Application() {
         private set
 
     lateinit var callLogRepository: CallLogRepository
+        private set
+
+    lateinit var contactRepository: ContactRepository
         private set
 
     lateinit var usbTransport: AndroidUsbSerialTransport
@@ -39,6 +52,9 @@ class DuoPhoneApplication : Application() {
         private set
 
     lateinit var audioBridge: AndroidAudioBridge
+        private set
+
+    lateinit var ringtoneController: CallRingtoneController
         private set
 
     lateinit var modemController: ModemController
@@ -60,11 +76,14 @@ class DuoPhoneApplication : Application() {
         dbHelper = DuoDatabaseHelper(this)
         smsRepository = SmsRepository(dbHelper)
         callLogRepository = CallLogRepository(dbHelper)
+        contactRepository = ContactRepository(this, dbHelper)
         usbTransport = AndroidUsbSerialTransport(this)
         adbClient = AndroidUsbAdbClient(this)
         val voiceDir = File(filesDir, "voice_runtime").apply { mkdirs() }
         voiceRuntime = Qdc507VoiceRuntime(adbClient, voiceDir)
         audioBridge = AndroidAudioBridge(this)
+        ringtoneController = CallRingtoneController(this)
+
         modemController = ModemController(
             transport = usbTransport,
             requestUsbPermission = {
@@ -84,25 +103,51 @@ class DuoPhoneApplication : Application() {
                 val dev = usbTransport.findSupportedDevice()
                 dev != null && usbTransport.hasPermission(dev)
             },
+            keepaliveIntervalMs = 30_000L,
+            isKeepalivePaused = {
+                ::callController.isInitialized && callController.state.value.phase != CallUiPhase.IDLE
+            },
         )
         smsController = SmsServiceController(
             atEngine = modemController.atEngine,
             repository = smsRepository,
-            onNewIncomingSms = { sms -> SmsNotificationHelper.showIncomingSms(this, sms) },
+            onNewIncomingSms = { sms ->
+                val name = contactRepository.resolveDisplayName(sms.address)
+                SmsNotificationHelper.showIncomingSms(this, sms, displayName = name)
+            },
         )
         callController = CallController(
             atEngine = modemController.atEngine,
             callLogStore = callLogRepository,
-            onIncomingCallAlert = { num -> SmsNotificationHelper.showIncomingCall(this, num) },
-            onIncomingCallDismiss = { SmsNotificationHelper.cancelIncomingCall(this) },
+            onIncomingCallAlert = { num ->
+                ringtoneController.startRinging()
+                val name = contactRepository.resolveDisplayName(num)
+                SmsNotificationHelper.showIncomingCall(this, num, displayName = name)
+            },
+            onIncomingCallDismiss = {
+                ringtoneController.stopRinging()
+                SmsNotificationHelper.cancelIncomingCall(this)
+            },
             onMuteChanged = { muted -> audioBridge.setMuted(muted) },
             onSpeakerChanged = { speaker -> audioBridge.setSpeakerEnabled(speaker) },
             onRealCallActive = {
+                ringtoneController.stopRinging()
                 val uacComplete = audioBridge.refreshDiagnostics().uacPair.isComplete
                 if (uacComplete && audioBridge.checkRecordPermission()) {
                     var snap = voiceRuntime.state.value
                     if (snap.stage == VoiceRuntimeStage.UNKNOWN || snap.stage == VoiceRuntimeStage.ADB_UNAVAILABLE) {
                         voiceRuntime.probeReadOnly(uacDetected = true)
+                        snap = voiceRuntime.state.value
+                    }
+                    // Auto-recover /tmp/duophone-voice if QDC507 power-cycled or re-plugged since boot.
+                    val allAssetsValid = snap.localAssets.isNotEmpty() && snap.localAssets.all { it.valid }
+                    if ((!snap.aprLoaded || !snap.voiceLoaded) && snap.adbDetected && allAssetsValid) {
+                        DuoLogger.i(
+                            LogCategory.MODEM,
+                            "voice_auto_prepare",
+                            "Preparing /tmp/duophone-voice automatically on active call",
+                        )
+                        voiceRuntime.prepareReversibleRuntime(uacDetected = true)
                         snap = voiceRuntime.state.value
                     }
                     // Always start a fresh mavo-pcm-bridge --voice-route-session on ACTIVE VoLTE call
@@ -112,7 +157,7 @@ class DuoPhoneApplication : Application() {
                         snap.stage == VoiceRuntimeStage.ROUTE_ACTIVE
                     ) {
                         voiceRuntime.startVoiceRoute()
-                        kotlinx.coroutines.delay(300L)
+                        delay(300L)
                         audioBridge.refreshDiagnostics()
                         if (!audioBridge.state.value.isRunning) {
                             audioBridge.start()
@@ -121,6 +166,7 @@ class DuoPhoneApplication : Application() {
                 }
             },
             onRealCallEnded = {
+                ringtoneController.stopRinging()
                 audioBridge.stop()
                 if (voiceRuntime.state.value.bridgePid != null) {
                     voiceRuntime.stopVoiceRoute()
@@ -129,6 +175,7 @@ class DuoPhoneApplication : Application() {
         )
         val backupDir = File(filesDir, "backups").apply { mkdirs() }
         configManager = Qdc507ConfigManager(modemController.atEngine, backupDir)
+        appScope.launch { contactRepository.reload() }
         DuoLogger.i(LogCategory.SERVICE, "app_create", "DuoPhoneApplication initialized")
     }
 }

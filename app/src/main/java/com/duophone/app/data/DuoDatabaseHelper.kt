@@ -12,11 +12,12 @@ class DuoDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
 
     companion object {
         const val DB_NAME = "duophone.db"
-        const val DB_VERSION = 1
+        const val DB_VERSION = 2
 
         const val TABLE_SMS = "sms_messages"
         const val TABLE_CALLS = "call_logs"
         const val TABLE_BACKUPS = "config_backups"
+        const val TABLE_CONTACTS = "contacts"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -65,9 +66,28 @@ class DuoDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, n
             )
             """.trimIndent(),
         )
+        createContactsTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Schema migrations go here when DB_VERSION increments.
+        if (oldVersion < 2) {
+            createContactsTable(db)
+        }
+    }
+
+    private fun createContactsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_CONTACTS (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                normalized_phone TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                updated_at_ms INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_contacts_norm ON $TABLE_CONTACTS(normalized_phone)")
     }
 }

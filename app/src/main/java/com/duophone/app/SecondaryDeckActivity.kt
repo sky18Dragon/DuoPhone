@@ -47,11 +47,15 @@ class SecondaryDeckActivity : ComponentActivity() {
         val modemController = app.modemController
         val callController = app.callController
         val smsController = app.smsController
+        val contactRepository = app.contactRepository
+        val audioBridge = app.audioBridge
 
         setContent {
             DuoPhoneTheme {
                 val modemState by modemController.state.collectAsStateWithLifecycle()
                 val callState by callController.state.collectAsStateWithLifecycle()
+                val contacts by contactRepository.contacts.collectAsStateWithLifecycle()
+                val audioState by audioBridge.state.collectAsStateWithLifecycle()
 
                 SecondaryDeckScreen(
                     displayId = currentDisplayId,
@@ -94,6 +98,10 @@ class SecondaryDeckActivity : ComponentActivity() {
                         callController.simulateIncomingCall("+8613800138000")
                     },
                     onCloseDeck = { finish() },
+                    contacts = contacts,
+                    audioState = audioState,
+                    onSelectAudioRoute = { route -> audioBridge.applyLocalAudioRoute(route) },
+                    onAdjustCallVolume = { delta -> audioBridge.adjustCallVolume(delta) },
                 )
             }
         }

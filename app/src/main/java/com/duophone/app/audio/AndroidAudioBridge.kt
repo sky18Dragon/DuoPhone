@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -52,6 +53,8 @@ data class AudioBridgeState(
     val hasRecordPermission: Boolean = false,
     val uacPair: UacDevicePair = UacDevicePair(),
     val localRoute: LocalAudioRoute = LocalAudioRoute.SPEAKER,
+    val availableRoutes: Set<LocalAudioRoute> = setOf(LocalAudioRoute.SPEAKER),
+    val callVolumePercent: Int = 80,
     val isMuted: Boolean = false,
     val isSpeakerOn: Boolean = true,
     val uplinkRmsDbfs: Double = -96.0,
@@ -73,6 +76,18 @@ class AndroidAudioBridge(
     private var uplinkJob: Job? = null
     private var downlinkJob: Job? = null
 
+    @Volatile
+    private var activeLocalRecord: AudioRecord? = null
+
+    @Volatile
+    private var activeLocalTrack: AudioTrack? = null
+
+    @Volatile
+    private var lastKnownDevices: AvailableLocalDevices = AvailableLocalDevices()
+
+    @Volatile
+    private var userRouteOverride: LocalAudioRoute? = null
+
     private val _state = MutableStateFlow(
         AudioBridgeState(hasRecordPermission = checkRecordPermission()),
     )
@@ -87,6 +102,30 @@ class AndroidAudioBridge(
     @Volatile
     private var latestDownlinkRmsDbfs: Double = -96.0
 
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            handleAudioDevicesChanged("added:${addedDevices?.joinToString(",") { "${it.type}" }.orEmpty()}")
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            handleAudioDevicesChanged("removed:${removedDevices?.joinToString(",") { "${it.type}" }.orEmpty()}")
+        }
+    }
+
+    init {
+        lastKnownDevices = detectLocalDevices()
+        val initialRoute = AudioRoutePolicy.selectPreferredRoute(lastKnownDevices, null)
+        _state.value = _state.value.copy(
+            localRoute = initialRoute,
+            availableRoutes = AudioRoutePolicy.availableRoutes(lastKnownDevices),
+            callVolumePercent = getCallVolumePercent(),
+            isSpeakerOn = initialRoute == LocalAudioRoute.SPEAKER,
+        )
+        runCatching {
+            audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+        }
+    }
+
     fun checkRecordPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
@@ -94,12 +133,45 @@ class AndroidAudioBridge(
     fun refreshDiagnostics(): AudioBridgeState {
         val perm = checkRecordPermission()
         val uac = findUacDevicePair()
+        val devices = detectLocalDevices()
+        lastKnownDevices = devices
+        val routes = AudioRoutePolicy.availableRoutes(devices)
+        val selectedRoute = if (_state.value.localRoute in routes) {
+            _state.value.localRoute
+        } else {
+            AudioRoutePolicy.selectPreferredRoute(devices, userRouteOverride)
+        }
         val next = _state.value.copy(
             hasRecordPermission = perm,
             uacPair = uac.summary,
+            localRoute = selectedRoute,
+            availableRoutes = routes,
+            callVolumePercent = getCallVolumePercent(),
+            isSpeakerOn = selectedRoute == LocalAudioRoute.SPEAKER,
         )
         _state.value = next
         return next
+    }
+
+    fun getCallVolumePercent(): Int {
+        return runCatching {
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL).coerceAtLeast(1)
+            val cur = audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL).coerceIn(0, max)
+            ((cur * 100f) / max).toInt()
+        }.getOrDefault(80)
+    }
+
+    fun adjustCallVolume(deltaSteps: Int): Int {
+        val updatedPercent = runCatching {
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL).coerceAtLeast(1)
+            val cur = audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+            val target = (cur + deltaSteps).coerceIn(1, max)
+            audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, target, 0)
+            DuoLogger.i(LogCategory.AUDIO, "call_volume", "stream=VOICE_CALL vol=$target/$max")
+            ((target * 100f) / max).toInt()
+        }.getOrElse { _state.value.callVolumePercent }
+        _state.value = _state.value.copy(callVolumePercent = updatedPercent)
+        return updatedPercent
     }
 
     fun setMuted(muted: Boolean) {
@@ -112,23 +184,49 @@ class AndroidAudioBridge(
     }
 
     fun setSpeakerEnabled(enabled: Boolean) {
-        val route = if (enabled) LocalAudioRoute.SPEAKER else LocalAudioRoute.EARPIECE_OR_DEFAULT
-        applyLocalAudioRoute(route)
+        val devices = detectLocalDevices()
+        val route = if (enabled) {
+            LocalAudioRoute.SPEAKER
+        } else {
+            when {
+                devices.hasBluetooth -> LocalAudioRoute.BLUETOOTH
+                devices.hasWiredHeadset -> LocalAudioRoute.WIRED_HEADSET
+                devices.hasEarpiece -> LocalAudioRoute.EARPIECE_OR_DEFAULT
+                else -> LocalAudioRoute.SPEAKER
+            }
+        }
+        applyLocalAudioRoute(route, fromUser = true)
     }
 
-    fun applyLocalAudioRoute(route: LocalAudioRoute) {
+    fun applyLocalAudioRoute(route: LocalAudioRoute, fromUser: Boolean = true) {
+        userRouteOverride = if (fromUser) route else null
         runCatching {
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                applyCommunicationDeviceApi31(route)
-            } else {
-                applyLegacyAudioRoute(route)
+            if (_state.value.isRunning) {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    applyCommunicationDeviceApi31(route)
+                } else {
+                    applyLegacyAudioRoute(route)
+                }
+                activeLocalRecord?.let { rec ->
+                    val inDev = findLocalInputDevice(route)
+                    if (inDev != null) rec.preferredDevice = inDev
+                }
+                activeLocalTrack?.let { trk ->
+                    val outDev = findLocalOutputDevice(route)
+                    if (outDev != null) trk.preferredDevice = outDev
+                }
             }
             _state.value = _state.value.copy(
                 localRoute = route,
                 isSpeakerOn = route == LocalAudioRoute.SPEAKER,
+                callVolumePercent = getCallVolumePercent(),
             )
-            DuoLogger.i(LogCategory.AUDIO, "audio_route", "Applied local audio route: ${route.name}")
+            DuoLogger.i(
+                LogCategory.AUDIO,
+                "audio_route",
+                "Applied local audio route: ${route.name} fromUser=$fromUser live=${_state.value.isRunning}",
+            )
         }.onFailure { err ->
             DuoLogger.w(LogCategory.AUDIO, "audio_route_fail", "Route ${route.name} failed: ${err.message}")
             _state.value = _state.value.copy(lastError = "切换音频路由失败: ${err.message}")
@@ -163,8 +261,23 @@ class AndroidAudioBridge(
             return Result.failure(IllegalStateException(msg))
         }
 
-        val targetRoute = if (_state.value.isSpeakerOn) LocalAudioRoute.SPEAKER else _state.value.localRoute
-        applyLocalAudioRoute(targetRoute)
+        val devices = detectLocalDevices()
+        lastKnownDevices = devices
+        val targetRoute = AudioRoutePolicy.selectPreferredRoute(devices, userRouteOverride)
+        _state.value = _state.value.copy(
+            isRunning = true,
+            hasRecordPermission = true,
+            uacPair = resolved.summary,
+            localRoute = targetRoute,
+            availableRoutes = AudioRoutePolicy.availableRoutes(devices),
+            callVolumePercent = getCallVolumePercent(),
+            isSpeakerOn = targetRoute == LocalAudioRoute.SPEAKER,
+            uplinkZeroChunks = 0,
+            downlinkZeroChunks = 0,
+            androidCaptureConcurrencyWarning = false,
+            lastError = null,
+        )
+        applyLocalAudioRoute(targetRoute, fromUser = userRouteOverride != null)
 
         val uacInRate = resolved.input.sampleRates.firstOrNull { it in SUPPORTED_USB_RATES } ?: DEFAULT_UAC_RATE_HZ
         val uacOutRate = resolved.output.sampleRates.firstOrNull { it in SUPPORTED_USB_RATES } ?: DEFAULT_UAC_RATE_HZ
@@ -172,13 +285,6 @@ class AndroidAudioBridge(
         val localOutputDevice = findLocalOutputDevice(targetRoute)
 
         _state.value = _state.value.copy(
-            isRunning = true,
-            hasRecordPermission = true,
-            uacPair = resolved.summary,
-            uplinkZeroChunks = 0,
-            downlinkZeroChunks = 0,
-            androidCaptureConcurrencyWarning = false,
-            lastError = null,
             lastSummary = "双向 UAC 音频桥接运行中 (uacIn=${uacInRate}Hz, uacOut=${uacOutRate}Hz, localOut=${localOutputDevice?.productName ?: targetRoute.label})",
         )
 
@@ -258,6 +364,7 @@ class AndroidAudioBridge(
         if (localInDevice != null) {
             record.preferredDevice = localInDevice
         }
+        activeLocalRecord = record
 
         var aec: AcousticEchoCanceler? = null
         var ns: NoiseSuppressor? = null
@@ -339,7 +446,7 @@ class AndroidAudioBridge(
                     zeroChunks = 0
                 } else {
                     if (stats.allZero) zeroChunks++ else zeroChunks = 0
-                    val speakerEchoRisk = _state.value.isSpeakerOn &&
+                    val speakerEchoRisk = AudioRoutePolicy.shouldEnableSpeakerEchoDucking(_state.value.localRoute) &&
                         (nowMs - lastDownlinkActiveMs) <= ECHO_HANGOVER_MS &&
                         stats.rmsDbfs <= latestDownlinkRmsDbfs + 14.0
                     val gain = if (speakerEchoRisk) {
@@ -381,6 +488,7 @@ class AndroidAudioBridge(
                 reportLoopError("上行语音循环异常: ${t.message}")
             }
         } finally {
+            activeLocalRecord = null
             runCatching { record.stop() }
             runCatching { record.release() }
             runCatching { aec?.release() }
@@ -456,6 +564,7 @@ class AndroidAudioBridge(
             localTrack.preferredDevice = localOutDevice
         }
         localTrack.setVolume(AudioTrack.getMaxVolume())
+        activeLocalTrack = localTrack
 
         val resampler = StatefulLinearResampler(uacInRateHz, localRate)
         val buffer = ShortArray(frameSamples)
@@ -508,6 +617,7 @@ class AndroidAudioBridge(
                 reportLoopError("下行语音循环异常: ${t.message}")
             }
         } finally {
+            activeLocalTrack = null
             runCatching { uacRecord.stop() }
             runCatching { uacRecord.release() }
             runCatching { localTrack.stop() }
@@ -646,6 +756,68 @@ class AndroidAudioBridge(
                     ?: outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                     ?: outputs.firstOrNull()
         }
+    }
+
+    private fun handleAudioDevicesChanged(reason: String) {
+        val prev = lastKnownDevices
+        val curr = detectLocalDevices()
+        lastKnownDevices = curr
+        val uac = findUacDevicePair()
+        val routes = AudioRoutePolicy.availableRoutes(curr)
+        val nextRoute = AudioRoutePolicy.resolveNextRouteOnDeviceChange(
+            currentRoute = _state.value.localRoute,
+            previous = prev,
+            current = curr,
+        )
+        _state.value = _state.value.copy(
+            uacPair = uac.summary,
+            availableRoutes = routes,
+            callVolumePercent = getCallVolumePercent(),
+        )
+        if (nextRoute != _state.value.localRoute) {
+            DuoLogger.i(
+                LogCategory.AUDIO,
+                "audio_device_hotplug",
+                "$reason route=${_state.value.localRoute.name}->${nextRoute.name} bt=${curr.hasBluetooth} wired=${curr.hasWiredHeadset}",
+            )
+            applyLocalAudioRoute(nextRoute, fromUser = false)
+        }
+    }
+
+    private fun detectLocalDevices(): AvailableLocalDevices {
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .filter { dev ->
+                dev.type != AudioDeviceInfo.TYPE_USB_DEVICE &&
+                    dev.type != AudioDeviceInfo.TYPE_USB_HEADSET
+            }
+        val commDevices = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { audioManager.availableCommunicationDevices }.getOrDefault(emptyList())
+                .filter { dev ->
+                    dev.type != AudioDeviceInfo.TYPE_USB_DEVICE &&
+                        dev.type != AudioDeviceInfo.TYPE_USB_HEADSET
+                }
+        } else {
+            emptyList()
+        }
+        val combined = outputs + commDevices
+        val hasBluetooth = combined.any { dev ->
+            dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    (dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET || dev.type == AudioDeviceInfo.TYPE_HEARING_AID))
+        }
+        val hasWiredHeadset = combined.any { dev ->
+            dev.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                dev.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+        }
+        val hasEarpiece = combined.any { dev ->
+            dev.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+        }
+        return AvailableLocalDevices(
+            hasBluetooth = hasBluetooth,
+            hasWiredHeadset = hasWiredHeadset,
+            hasEarpiece = hasEarpiece,
+        )
     }
 
     private fun scoreUsbAudioDevice(info: AudioDeviceInfo): Int {

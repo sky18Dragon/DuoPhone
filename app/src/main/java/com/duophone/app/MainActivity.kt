@@ -48,6 +48,24 @@ class MainActivity : ComponentActivity() {
         DuoLogger.i(LogCategory.SERVICE, "notif_permission", "POST_NOTIFICATIONS granted=$granted")
     }
 
+    private var hasContactsPermState by mutableStateOf(false)
+
+    private val readContactsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasContactsPermState = granted
+        DuoLogger.i(LogCategory.SERVICE, "contacts_permission", "READ_CONTACTS granted=$granted")
+        lifecycleScope.launch {
+            if (granted) {
+                val repo = (application as DuoPhoneApplication).contactRepository
+                repo.reload()
+                snackbarHostState.showSnackbar("已导入系统通讯录（共 ${repo.contacts.value.size} 位联系人）")
+            } else {
+                snackbarHostState.showSnackbar("未授予通讯录权限，仍可使用本地通讯录")
+            }
+        }
+    }
+
     private var pendingStartAudioBridgeAfterPermission = false
 
     private val recordAudioPermissionLauncher = registerForActivityResult(
@@ -74,7 +92,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        (application as DuoPhoneApplication).audioBridge.refreshDiagnostics()
+        val app = application as DuoPhoneApplication
+        app.audioBridge.refreshDiagnostics()
+        hasContactsPermState = app.contactRepository.hasSystemContactsPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,10 +108,12 @@ class MainActivity : ComponentActivity() {
         val controller = app.modemController
         val smsController = app.smsController
         val callController = app.callController
+        val contactRepository = app.contactRepository
         val voiceRuntime = app.voiceRuntime
         val audioBridge = app.audioBridge
         val configManager = app.configManager
 
+        hasContactsPermState = contactRepository.hasSystemContactsPermission()
         handleNavigationIntent(intent)
         requestNotificationPermissionIfNeeded()
         ModemService.start(this, triggerConnect = true)
@@ -111,6 +133,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val callState by callController.state.collectAsStateWithLifecycle()
                 val callLogs by callController.callLogs.collectAsStateWithLifecycle()
+                val contacts by contactRepository.contacts.collectAsStateWithLifecycle()
                 val voiceState by voiceRuntime.state.collectAsStateWithLifecycle()
                 val audioState by audioBridge.state.collectAsStateWithLifecycle()
                 val configBackupState by configManager.state.collectAsStateWithLifecycle()
@@ -301,6 +324,37 @@ class MainActivity : ComponentActivity() {
                                 onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "还原原厂 USB 失败") },
                             )
                         }
+                    },
+                    contacts = contacts,
+                    hasContactsPermission = hasContactsPermState,
+                    onAdjustCallVolume = { delta -> audioBridge.adjustCallVolume(delta) },
+                    onSaveLocalContact = { id, name, phone, note ->
+                        lifecycleScope.launch {
+                            runCatching { contactRepository.upsertLocal(id, name, phone, note) }.fold(
+                                onSuccess = { snackbarHostState.showSnackbar("已保存联系人：$name") },
+                                onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "保存联系人失败") },
+                            )
+                        }
+                    },
+                    onDeleteLocalContact = { id ->
+                        lifecycleScope.launch {
+                            contactRepository.deleteLocal(id)
+                            snackbarHostState.showSnackbar("已删除本地联系人")
+                        }
+                    },
+                    onSyncSystemContacts = {
+                        if (contactRepository.hasSystemContactsPermission()) {
+                            lifecycleScope.launch {
+                                contactRepository.reload()
+                                snackbarHostState.showSnackbar("已同步系统通讯录（共 ${contactRepository.contacts.value.size} 条）")
+                            }
+                        } else {
+                            readContactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                        }
+                    },
+                    onOpenSmsForNumber = { number ->
+                        selectedSmsAddress = number
+                        selectedTab = DuoTab.SMS
                     },
                 )
             }

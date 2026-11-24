@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -42,10 +43,13 @@ class ModemController(
     private val findAttachedSummary: () -> UsbDeviceSummary? = { transport.currentDevice },
     private val hasUsbPermission: () -> Boolean = { true },
     private val autoReconnectEnabled: Boolean = true,
+    private val keepaliveIntervalMs: Long = 0L,
+    private val isKeepalivePaused: () -> Boolean = { false },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val lifecycleMutex = Mutex()
     private var reconnectJob: Job? = null
+    private var keepaliveJob: Job? = null
 
     val atEngine: AtEngine = AtEngine(
         transport = transport,
@@ -86,6 +90,8 @@ class ModemController(
         DuoLogger.w(LogCategory.USB, "usb_detached", "USB detach event received", stateTag())
         reconnectJob?.cancel()
         reconnectJob = null
+        keepaliveJob?.cancel()
+        keepaliveJob = null
         atEngine.stopReader()
         transport.close()
         _state.update {
@@ -183,6 +189,12 @@ class ModemController(
 
         refreshTelemetryInternal(includeIdentityAndConfig = true)
         _state.update { it.copy(isBusy = false, reconnectAttempt = 0) }
+        if (_state.value.connectionState == ModemConnectionState.READY ||
+            _state.value.connectionState == ModemConnectionState.SIM_NOT_READY ||
+            _state.value.connectionState == ModemConnectionState.NETWORK_UNAVAILABLE
+        ) {
+            startKeepaliveIfEnabled()
+        }
         return@withLock _state.value.connectionState.isHealthy ||
             _state.value.connectionState == ModemConnectionState.SIM_NOT_READY ||
             _state.value.connectionState == ModemConnectionState.NETWORK_UNAVAILABLE
@@ -222,6 +234,7 @@ class ModemController(
     }
 
     fun release() {
+        keepaliveJob?.cancel()
         reconnectJob?.cancel()
         atEngine.release()
         transport.close()
@@ -358,7 +371,54 @@ class ModemController(
         }
     }
 
+    private fun startKeepaliveIfEnabled() {
+        if (keepaliveIntervalMs <= 0L) return
+        keepaliveJob?.cancel()
+        keepaliveJob = scope.launch {
+            var consecutiveFailures = 0
+            var tickCount = 0
+            while (isActive && atEngine.isRunning) {
+                delay(keepaliveIntervalMs)
+                if (!isActive || !atEngine.isRunning) break
+                if (isKeepalivePaused() || _state.value.isBusy) continue
+
+                val res = atEngine.execute("AT", timeoutMs = 3000L, maxRetries = 1)
+                if (res.isOk) {
+                    consecutiveFailures = 0
+                    tickCount++
+                    if (tickCount % 2 == 0) {
+                        val csq = atEngine.execute("AT+CSQ", timeoutMs = 2500L, maxRetries = 0)
+                        if (csq.isOk) {
+                            val reading = AtResponseParser.parseCsq(csq)
+                            _state.update { it.copy(signal = reading, lastRefreshMs = System.currentTimeMillis()) }
+                        }
+                    }
+                } else {
+                    consecutiveFailures++
+                    DuoLogger.w(
+                        LogCategory.POWER,
+                        "keepalive_miss",
+                        "AT keepalive miss count=$consecutiveFailures status=${res.status}",
+                        stateTag(),
+                    )
+                    if (consecutiveFailures >= 2) {
+                        DuoLogger.e(
+                            LogCategory.POWER,
+                            "keepalive_lost",
+                            "2 consecutive AT keepalive failures; triggering recovery",
+                            stateTag(),
+                        )
+                        handleTransportLost(IllegalStateException("AT keepalive timeout"))
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     private fun handleTransportLost(err: Throwable) {
+        keepaliveJob?.cancel()
+        keepaliveJob = null
         transport.close()
         if (!autoReconnectEnabled) {
             transition(ModemConnectionState.DISCONNECTED, "USB 链路中断：${err.message.orEmpty()}")

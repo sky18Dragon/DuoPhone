@@ -41,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duophone.app.data.ContactPhoneMatcher
+import com.duophone.app.data.ContactRecord
 import com.duophone.app.data.SmsDirection
 import com.duophone.app.data.SmsRecord
 import com.duophone.app.data.SmsThreadSummary
@@ -62,6 +64,7 @@ fun SmsTabScreen(
     onSimulateIncomingSms: () -> Unit,
     onCopyOtp: (String) -> Unit,
     onDeleteMessage: (Long) -> Unit,
+    contacts: List<ContactRecord> = emptyList(),
 ) {
     val context = LocalContext.current
     var composeNumber by rememberSaveable { mutableStateOf("") }
@@ -162,13 +165,15 @@ fun SmsTabScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    val threadDisplayName = ContactPhoneMatcher.resolveDisplayName(thread.address, contacts)
                                     Text(
-                                        text = thread.address,
+                                        text = threadDisplayName?.let { "$it · ${thread.address}" } ?: thread.address,
                                         color = DuoTextPrimary,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 13.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
                                     )
                                     Text(
                                         text = timeFmt.format(Date(thread.latestTimestampMs)),
@@ -264,13 +269,18 @@ fun SmsTabScreen(
                 val threadMessages = remember(messages, activeAddr) {
                     messages.filter { it.address == activeAddr }.sortedBy { it.timestampMs }
                 }
+                val activeDisplayName = ContactPhoneMatcher.resolveDisplayName(activeAddr, contacts)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "会话：$activeAddr (${threadMessages.size} 条)",
+                        text = if (activeDisplayName != null) {
+                            "会话：$activeDisplayName ($activeAddr · ${threadMessages.size} 条)"
+                        } else {
+                            "会话：$activeAddr (${threadMessages.size} 条)"
+                        },
                         color = DuoAccent,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
