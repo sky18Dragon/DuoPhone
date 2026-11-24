@@ -48,6 +48,23 @@ class MainActivity : ComponentActivity() {
         DuoLogger.i(LogCategory.SERVICE, "notif_permission", "POST_NOTIFICATIONS granted=$granted")
     }
 
+    private val recordAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        DuoLogger.i(LogCategory.AUDIO, "record_audio_permission", "RECORD_AUDIO granted=$granted")
+        (application as DuoPhoneApplication).audioBridge.refreshDiagnostics()
+        lifecycleScope.launch {
+            snackbarHostState.showSnackbar(
+                if (granted) "已授予麦克风录音权限，可测试 Phase 4 音频桥接" else "未授予 RECORD_AUDIO 权限，仅可执行呼叫控制与只读探测",
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (application as DuoPhoneApplication).audioBridge.refreshDiagnostics()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -59,6 +76,8 @@ class MainActivity : ComponentActivity() {
         val controller = app.modemController
         val smsController = app.smsController
         val callController = app.callController
+        val voiceRuntime = app.voiceRuntime
+        val audioBridge = app.audioBridge
 
         handleNavigationIntent(intent)
         requestNotificationPermissionIfNeeded()
@@ -79,6 +98,8 @@ class MainActivity : ComponentActivity() {
                 }
                 val callState by callController.state.collectAsStateWithLifecycle()
                 val callLogs by callController.callLogs.collectAsStateWithLifecycle()
+                val voiceState by voiceRuntime.state.collectAsStateWithLifecycle()
+                val audioState by audioBridge.state.collectAsStateWithLifecycle()
                 val hw = hardwareState ?: hostHardware
                 val secondaryDisplayId = remember(hw) {
                     DualDisplayHelper.selectSecondaryDisplayId(
@@ -191,6 +212,51 @@ class MainActivity : ComponentActivity() {
                     },
                     onClearCallLogs = {
                         lifecycleScope.launch { callController.clearCallLogs() }
+                    },
+                    voiceState = voiceState,
+                    audioState = audioState,
+                    onProbeVoiceRuntime = {
+                        lifecycleScope.launch {
+                            val uacPresent = modemState.usbDevice?.hasUacInterface == true
+                            voiceRuntime.probeReadOnly(uacDetected = uacPresent)
+                            audioBridge.refreshDiagnostics()
+                        }
+                    },
+                    onPrepareVoiceRuntime = {
+                        lifecycleScope.launch {
+                            val uacPresent = modemState.usbDevice?.hasUacInterface == true
+                            voiceRuntime.prepareReversibleRuntime(uacDetected = uacPresent).onFailure { err ->
+                                snackbarHostState.showSnackbar(err.message ?: "语音运行时准备失败")
+                            }
+                        }
+                    },
+                    onToggleVoiceRoute = {
+                        lifecycleScope.launch {
+                            val res = if (voiceState.bridgePid != null) {
+                                voiceRuntime.stopVoiceRoute()
+                            } else {
+                                voiceRuntime.startVoiceRoute()
+                            }
+                            res.onFailure { err ->
+                                snackbarHostState.showSnackbar(err.message ?: "模块语音路由操作失败")
+                            }
+                        }
+                    },
+                    onToggleAudioBridge = {
+                        lifecycleScope.launch {
+                            if (audioState.isRunning) {
+                                audioBridge.stop()
+                            } else if (!audioBridge.checkRecordPermission()) {
+                                recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            } else {
+                                audioBridge.start().onFailure { err ->
+                                    snackbarHostState.showSnackbar(err.message ?: "UAC 音频桥接启动失败")
+                                }
+                            }
+                        }
+                    },
+                    onSelectAudioRoute = { route ->
+                        audioBridge.applyLocalAudioRoute(route)
                     },
                 )
             }

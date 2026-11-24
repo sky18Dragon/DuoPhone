@@ -51,8 +51,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duophone.app.audio.AudioBridgeState
+import com.duophone.app.audio.LocalAudioRoute
 import com.duophone.app.data.CallLogRecord
 import com.duophone.app.data.SmsRecord
+import com.duophone.app.device.VoiceRuntimeSnapshot
+import com.duophone.app.device.VoiceRuntimeStage
 import com.duophone.app.data.SmsThreadSummary
 import com.duophone.app.diagnostics.HostHardwareSnapshot
 import com.duophone.app.diagnostics.LogCategory
@@ -124,6 +128,13 @@ fun DuoPhoneScreen(
     onSimulateOutgoingCall: (String) -> Unit,
     onDeleteCallLog: (Long) -> Unit,
     onClearCallLogs: () -> Unit,
+    voiceState: VoiceRuntimeSnapshot = VoiceRuntimeSnapshot(),
+    audioState: AudioBridgeState = AudioBridgeState(),
+    onProbeVoiceRuntime: () -> Unit = {},
+    onPrepareVoiceRuntime: () -> Unit = {},
+    onToggleVoiceRoute: () -> Unit = {},
+    onToggleAudioBridge: () -> Unit = {},
+    onSelectAudioRoute: (LocalAudioRoute) -> Unit = {},
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -251,8 +262,15 @@ fun DuoPhoneScreen(
                 DuoTab.DIAGNOSTICS -> DiagnosticsView(
                     hostHardware = hostHardware,
                     logs = logs,
+                    voiceState = voiceState,
+                    audioState = audioState,
                     onRefreshHostHardware = onRefreshHostHardware,
                     onClearLogs = onClearLogs,
+                    onProbeVoiceRuntime = onProbeVoiceRuntime,
+                    onPrepareVoiceRuntime = onPrepareVoiceRuntime,
+                    onToggleVoiceRoute = onToggleVoiceRoute,
+                    onToggleAudioBridge = onToggleAudioBridge,
+                    onSelectAudioRoute = onSelectAudioRoute,
                 )
             }
         }
@@ -479,8 +497,15 @@ private fun AtConsoleView(
 private fun DiagnosticsView(
     hostHardware: HostHardwareSnapshot,
     logs: List<LogEntry>,
+    voiceState: VoiceRuntimeSnapshot,
+    audioState: AudioBridgeState,
     onRefreshHostHardware: () -> Unit,
     onClearLogs: () -> Unit,
+    onProbeVoiceRuntime: () -> Unit,
+    onPrepareVoiceRuntime: () -> Unit,
+    onToggleVoiceRoute: () -> Unit,
+    onToggleAudioBridge: () -> Unit,
+    onSelectAudioRoute: (LocalAudioRoute) -> Unit,
 ) {
     var selectedCategory by remember { mutableStateOf<LogCategory?>(null) }
     val filteredLogs = remember(logs, selectedCategory) {
@@ -516,6 +541,77 @@ private fun DiagnosticsView(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onRefreshHostHardware) { Text("刷新硬件快照", fontSize = 12.sp) }
                     OutlinedButton(onClick = onClearLogs) { Text("清空日志", fontSize = 12.sp) }
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "Phase 4 语音运行时与 UAC 音频桥接 (${voiceState.stage.name})") {
+                KeyValueRow("模块侧 ADB / UAC", "ADB=${voiceState.adbDetected} · UAC(USB描述)=${voiceState.uacDetected}")
+                KeyValueRow("模块内核与驱动", "${voiceState.kernelVersion.ifBlank { "未探测" }} · apr=${voiceState.aprLoaded} voice=${voiceState.voiceLoaded}")
+                KeyValueRow("ALSA /dev/snd", voiceState.pcmDevices.joinToString(", ").ifBlank { "—" })
+                KeyValueRow("模块桥接进程", voiceState.bridgePid?.let { "PID=$it" } ?: "未运行")
+                KeyValueRow("麦克风权限 / UAC", "RECORD_AUDIO=${audioState.hasRecordPermission} · UAC完整=${audioState.uacPair.isComplete}")
+                KeyValueRow(
+                    "UAC AudioDevice",
+                    "in=${audioState.uacPair.inputName ?: "—"} / out=${audioState.uacPair.outputName ?: "—"}",
+                )
+                KeyValueRow(
+                    "实时电平 (dBFS)",
+                    "上行 ${"%.1f".format(audioState.uplinkRmsDbfs)} dBFS · 下行 ${"%.1f".format(audioState.downlinkRmsDbfs)} dBFS",
+                )
+                if (audioState.androidCaptureConcurrencyWarning) {
+                    Text(
+                        text = "告警：检测到本地麦克风连续全零帧 (${audioState.uplinkZeroChunks})，可能受 Android 16 并发采集静音策略或硬件静音影响。",
+                        color = DuoAmber,
+                        fontSize = 11.sp,
+                    )
+                }
+                voiceState.localAssets.forEach { asset ->
+                    val statusText = when {
+                        asset.valid -> "就绪 (SHA-256 匹配)"
+                        asset.exists -> "校验失败 (SHA 不匹配)"
+                        else -> "未放置到 files/voice_runtime"
+                    }
+                    KeyValueRow("外部资源 ${asset.spec.fileName}", statusText)
+                }
+                val combinedErr = voiceState.lastError ?: audioState.lastError
+                if (!combinedErr.isNullOrBlank()) {
+                    Text(text = combinedErr, color = DuoRed, fontSize = 11.sp)
+                } else {
+                    Text(text = "${voiceState.lastSummary} | ${audioState.lastSummary}", color = DuoTextSecondary, fontSize = 11.sp)
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(onClick = onProbeVoiceRuntime) { Text("只读探测", fontSize = 11.sp) }
+                    OutlinedButton(onClick = onPrepareVoiceRuntime) { Text("部署 /tmp 运行时", fontSize = 11.sp) }
+                    OutlinedButton(onClick = onToggleVoiceRoute) {
+                        Text(if (voiceState.bridgePid != null) "停止模块路由" else "启动模块路由", fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = onToggleAudioBridge,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (audioState.isRunning) DuoRed else DuoAccent,
+                        ),
+                    ) {
+                        Text(if (audioState.isRunning) "停止 UAC 桥接" else "启动 UAC 桥接", fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    LocalAudioRoute.entries.forEach { route ->
+                        FilterChip(
+                            selected = audioState.localRoute == route,
+                            onClick = { onSelectAudioRoute(route) },
+                            label = { Text(route.label, fontSize = 11.sp) },
+                        )
+                    }
                 }
             }
         }

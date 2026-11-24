@@ -47,7 +47,7 @@ data class CallUiState(
     val isMuted: Boolean = false,
     val isSpeakerOn: Boolean = false,
     val lastError: String? = null,
-    val audioWarning: String = "当前为 Phase 3 呼叫控制层，双向语音桥接将在 Phase 4 独立验收",
+    val audioWarning: String = "请使用【诊断】页 Phase 4 控制卡独立验收 QDC507 双向语音桥接",
     val dtmfHistory: String = "",
 )
 
@@ -55,13 +55,17 @@ data class CallUiState(
  * Manages Phase 3 voice call signaling (ATD/ATA/ATH/+CLCC/+CLIP/+CEER/+VTS),
  * call history persistence, and clearly-labeled local UI simulation when no modem is connected.
  *
- * Strictly decoupled from Phase 4 two-way audio streaming.
+ * Strictly decoupled from Phase 4 two-way audio verification while exposing optional audio hooks.
  */
 class CallController(
     private val atEngine: AtEngine,
     private val callLogStore: CallLogStore,
     private val onIncomingCallAlert: (String) -> Unit = {},
     private val onIncomingCallDismiss: () -> Unit = {},
+    private val onMuteChanged: (Boolean) -> Unit = {},
+    private val onSpeakerChanged: (Boolean) -> Unit = {},
+    private val onRealCallActive: suspend () -> Unit = {},
+    private val onRealCallEnded: suspend () -> Unit = {},
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val clccPollIntervalMs: Long = 1200L,
 ) {
@@ -70,6 +74,7 @@ class CallController(
     private var clipConfigured = false
     private var clccPollJob: Job? = null
     private var timerJob: Job? = null
+    private var realAudioHookActive = false
 
     private val _state = MutableStateFlow(CallUiState())
     val state: StateFlow<CallUiState> = _state.asStateFlow()
@@ -258,13 +263,17 @@ class CallController(
     }
 
     fun toggleMute() {
-        _state.update { it.copy(isMuted = !it.isMuted) }
-        DuoLogger.i(LogCategory.AUDIO, "call_mute", "muted=${_state.value.isMuted}")
+        val next = !_state.value.isMuted
+        _state.update { it.copy(isMuted = next) }
+        onMuteChanged(next)
+        DuoLogger.i(LogCategory.AUDIO, "call_mute", "muted=$next")
     }
 
     fun toggleSpeaker() {
-        _state.update { it.copy(isSpeakerOn = !it.isSpeakerOn) }
-        DuoLogger.i(LogCategory.AUDIO, "call_speaker", "speaker=${_state.value.isSpeakerOn}")
+        val next = !_state.value.isSpeakerOn
+        _state.update { it.copy(isSpeakerOn = next) }
+        onSpeakerChanged(next)
+        DuoLogger.i(LogCategory.AUDIO, "call_speaker", "speaker=$next")
     }
 
     fun simulateIncomingCall(number: String = "+8613800138000") {
@@ -453,6 +462,10 @@ class CallController(
     }
 
     private fun startElapsedTimer() {
+        if (!_state.value.isSimulated && !realAudioHookActive) {
+            realAudioHookActive = true
+            scope.launch { runCatching { onRealCallActive() } }
+        }
         if (timerJob?.isActive == true) return
         timerJob = scope.launch {
             while (isActive && _state.value.phase == CallUiPhase.ACTIVE) {
@@ -477,6 +490,10 @@ class CallController(
         clccPollJob = null
         timerJob?.cancel()
         timerJob = null
+        if (realAudioHookActive) {
+            realAudioHookActive = false
+            scope.launch { runCatching { onRealCallEnded() } }
+        }
 
         val cur = _state.value
         val now = System.currentTimeMillis()
