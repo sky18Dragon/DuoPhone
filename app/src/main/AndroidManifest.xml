@@ -41,6 +41,13 @@
                 android:resource="@xml/usb_device_filter" />
         </activity>
 
+        <activity
+            android:name=".SecondaryDeckActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".service.ModemService"
             android:exported="false"

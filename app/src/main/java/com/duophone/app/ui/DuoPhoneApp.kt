@@ -99,8 +99,10 @@ fun DuoPhoneScreen(
     selectedSmsAddress: String?,
     callState: CallUiState,
     callLogs: List<CallLogRecord>,
+    secondaryDisplayId: Int?,
     snackbarHostState: SnackbarHostState,
     onConnect: () -> Unit,
+    onLaunchSecondaryDeck: () -> Unit,
     onRefreshTelemetry: () -> Unit,
     onRefreshHostHardware: () -> Unit,
     onRunAtCommand: (String) -> Unit,
@@ -167,6 +169,11 @@ fun DuoPhoneScreen(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (secondaryDisplayId != null) {
+                            OutlinedButton(onClick = onLaunchSecondaryDeck) {
+                                Text("下屏#$secondaryDisplayId", fontSize = 11.sp, color = DuoCyan)
+                            }
+                        }
                         OutlinedButton(onClick = onRefreshTelemetry, enabled = !modemState.isBusy) {
                             Text("刷新", fontSize = 12.sp)
                         }
