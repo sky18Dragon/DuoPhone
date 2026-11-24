@@ -49,11 +49,12 @@
 - [x] 实机打通 `AT+QADBKEY` 解锁、`0x2CA3:0x4006` `adb=1, uac=1`、`/tmp` 模块语音路由及 Android 16 全双工 UAC 通话（`AUDIO-001`~`AUDIO-004` 实机复测 PASS）
 - [x] 实机复测上行音量增强（`USAGE_ALARM` + `PcmVoiceConditioner` +9.5dB 软限幅）与硬件 `AEC`/`NS`/`AGC` + NLP 回声消除效果通过（`22:08:55` 日志 + 用户确认音量清晰放大、回音明显减轻）
 
-## Phase 5–6：后台稳定性与 P1 完整通信终端产品化 — 🚧 进行中
-- [ ] 合盖（`hall_switch`）与熄屏供电/功耗实机诊断、通话 `PARTIAL_WAKE_LOCK` 保活与 AT 心跳保活（`SYS-001`~`SYS-008`）
-- [ ] 来电铃声/振动（排除 UAC 劫持）与游戏友好型悬浮通知快捷键（接听 / 拒接 / 挂断 / 短信直复 / 复制验证码）
-- [ ] 通讯录管理（本地 SQLite + 系统 `READ_CONTACTS` 只读融合）及来电/通话记录/短信全局联系人姓名匹配
-- [ ] 蓝牙 / 3.5mm 有线耳机实时热插拔自动切换、通话音量调节与模块断电重插后 `/tmp` 语音运行时自动恢复（`AUDIO-006`~`AUDIO-010`）
+## Phase 5–6：后台稳定性与 P1 完整通信终端产品化 — 🚧 代码/单测已完成，待实机专项验收
+- [x] 实现后台稳定性组件：`ModemService` 通话期 `PARTIAL_WAKE_LOCK`、`ACTION_SCREEN_OFF/ON` 与 `DisplayListener` 合盖/亮屏诊断、亮屏断线重连触发及 `ModemController` 空闲 AT 心跳保活（`ModemKeepaliveTest` PASS）
+- [x] 实现来电铃声/振动控制器 `CallRingtoneController`（显式隔离 `Baiwang` UAC，仅从蓝牙/有线/扬声器响铃）与游戏友好型悬浮通知操作 `CallActionReceiver`（来电通知接听/拒接、通话常驻挂断、短信 `RemoteInput` 快捷回复与一键复制验证码）
+- [x] 实现通讯录管理与全局来电匹配：SQLite v2 `contacts` 表 + `ContactRepository`（本地 CRUD + `READ_CONTACTS` 只读融合去重）及 `CallScreen`/`SmsScreen`/`SecondaryDeckScreen` 全局姓名识别与双屏音量/路由控制（`ContactPhoneMatcherTest` PASS）
+- [x] 实现蓝牙 / 3.5mm 有线耳机 `AudioDeviceCallback` 热插拔自动切换、耳机态自动关闭扬声器回声压制、通话音量调节（`STREAM_VOICE_CALL`）与模块断电重插 `/tmp/duophone-voice` 自动恢复（`AudioRoutePolicyTest` PASS）
+- [ ] 实机专项验收：`AUDIO-006`~`AUDIO-010`（蓝牙/3.5mm 切换、拔插重连自恢复）、`SYS-001`~`SYS-008`（合盖 `hall_switch` 功耗与长时待机）、来电铃声与通知栏快捷键实测
 
 ## Phase 7：高级扩展（USB 4G 移动网络 / ECM / APN） — ⏳ 待开始
 - [ ] ECM 移动网络可行性研究、APN 配置与流量统计

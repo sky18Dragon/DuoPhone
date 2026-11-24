@@ -4,6 +4,13 @@ All notable changes to Duo Phone will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 5 & 6 — P1 Productization: Contacts, Ringtone, Quick Notifications, Headset Auto-Routing & Service Stability (2026-11-24)
+- **Contacts & Caller-ID**: Upgraded `DuoDatabaseHelper` to schema v2 (`contacts` table), added `ContactRepository` & `ContactPhoneMatcher` (local SQLite CRUD + optional `READ_CONTACTS` system merge with local-priority deduplication), and wired caller/sender name resolution across `CallScreen`, `SmsScreen`, `SecondaryDeckScreen`, and notifications.
+- **Ringtone & Game-Friendly Quick Actions**: Added `CallRingtoneController` (ringtone + vibration pinned strictly to local non-USB outputs so `Baiwang` UAC never hijacks ringing) and `CallActionReceiver` enabling direct notification **接听 / 拒接 / 挂断**, SMS **`RemoteInput` direct reply**, and **Copy OTP**.
+- **Headset Auto-Routing, Call Volume & Runtime Auto-Recovery**: Added `AudioRoutePolicy` and upgraded `AndroidAudioBridge` with `AudioDeviceCallback` hot-plug detection (Bluetooth / 3.5mm wired / speaker), live mid-call endpoint switching, headset NLP echo-ducking bypass, `STREAM_VOICE_CALL` volume steps, and automatic `/tmp/duophone-voice` re-deployment in `DuoPhoneApplication` after dongle power-cycling.
+- **Background Service & Power Diagnostics**: Upgraded `ModemController` with idle AT keepalive (paused during active calls) and `ModemService` with call-scoped `PARTIAL_WAKE_LOCK`, `ACTION_SCREEN_OFF`/`ON` + `DisplayManager.DisplayListener` diagnostics, and reconnect recovery.
+- **Verification**: Added `ContactPhoneMatcherTest`, `AudioRoutePolicyTest`, and `ModemKeepaliveTest`; full suite **47/47 PASS** (`16` suites), `lintDebug` **0 Error**, Debug APK `9,419,147` bytes.
+
 ### Phase 4 Live Two-Way Voice Breakthrough, Uplink Gain & Echo Suppression (2026-11-24)
 - Verified real-hardware QDC507 `AT+QADBKEY` unlock, `0x2CA3:0x4006` `adb=1, uac=1`, `/tmp/duophone-voice` `.ko` + ACDB VoLTE calibration, Android 16 full-duplex concurrent capture (`not silenced`), and live full-duplex cellular voice call (`downlink` + `uplink`).
 - Added `PcmVoiceConditioner` (`80 Hz` high-pass + two-stage `3400 Hz` low-pass, `+9.5 dB` soft-limited speech gain, slewed speakerphone NLP echo ducking) with unit tests in `PcmResamplerTest` (**40/40 PASS**, **0 Lint errors**).
