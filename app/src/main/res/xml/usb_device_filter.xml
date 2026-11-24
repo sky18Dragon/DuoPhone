@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DJI Cellular Dongle Gen 1 (QDC507): 0x2CA3 = 11427, 0x4006 = 16390 -->
+    <usb-device vendor-id="11427" product-id="16390" />
+
+    <!-- Compatible Quectel ID (if usbcfg was previously changed): 0x2C7C = 11388, 0x0125 = 293 -->
+    <usb-device vendor-id="11388" product-id="293" />
+</resources>

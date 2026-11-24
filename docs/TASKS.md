@@ -9,17 +9,18 @@
 - [x] 完成开源许可证合规审计与风险边界定义
 - [x] 制定架构方案（ADR-001 ~ ADR-005）并生成完整项目文档与 `AGENTS.md`
 
-## Phase 1：USB 与 AT 通信核心 — 🔄 进行中
-- [ ] 初始化 Gradle 9.x + AGP 9.x + Jetpack Compose 工程结构（`com.duophone.app`）
-- [ ] 实现分类脱敏日志系统 `DuoLogger`（12 分类 Tag + 手机号/IMEI/IMSI/ICCID/短信/验证码脱敏）
-- [ ] 实现 USB 设备识别（`2CA3:4006` / `2C7C:0125`）、描述符解析与安全接口分类/排序（显式跳过 ADB/UAC/存储/Diag）
-- [ ] 实现连接状态机（`DISCONNECTED` → `READY` + 5 种异常状态）
-- [ ] 实现 `AtEngine`（串行队列、行帧解析、异步 URC 分流、多行响应、SMS `>` 提示符、可控只读重试、非幂等指令防重试）
-- [ ] 实现基础遥测与只读模块诊断（`AT`/`ATI`/`ATE0`/`CGMI`/`CGMM`/`CGMR`/`CGSN`/`CPIN?`/`CSQ`/`COPS?`/`CREG?`/`CGREG?`/`CEREG?`/`QCFG="usbnet"/"usbcfg"/"ims"`/`QPCMV=?`）
-- [ ] 实现 `ModemService` 前台服务骨架与热插拔/断线自动重连恢复
-- [ ] 实现 Phase 1 Compose UI（状态仪表盘、USB 接口诊断、Retroid 双屏/输入硬件诊断卡、AT 调试终端、脱敏日志视图）
-- [ ] 编写 JUnit 4 自动化单元测试（Mock `UsbSerialTransport` 覆盖探测、AT 队列、URC 拆包、状态机、日志脱敏、响应解析）
-- [ ] 执行 `./gradlew assembleDebug testDebugUnitTest lintDebug` 全绿并通过 ADB 安装启动至 Retroid Pocket Duo 实机验证
+## Phase 1：USB 与 AT 通信核心 — ✅ 代码/单测/掌机基线完成（QDC507 实机联调待接模块）
+- [x] 初始化 Gradle 9.1.0 + AGP 9.0.1 + Jetpack Compose 工程结构（`com.duophone.app`，JDK 25 / SDK 36）
+- [x] 实现分类脱敏日志系统 `DuoLogger`（12 分类 Tag + PII 脱敏 + 滚动文件日志落盘）
+- [x] 实现 USB 设备识别（`2CA3:4006` / `2C7C:0125`）、描述符解析与安全接口分类/排序（显式跳过 ADB/UAC/存储/Diag）
+- [x] 实现连接状态机（`DISCONNECTED` → `READY` + 5 种异常状态）
+- [x] 实现 `AtEngine`（串行队列、行帧解析、异步 URC 分流、多行响应、SMS `>` 提示符、可控只读重试、非幂等指令防重试）
+- [x] 实现基础遥测与只读模块诊断（`AT`/`ATI`/`ATE0`/`CGMI`/`CGMM`/`CGMR`/`CGSN`/`CPIN?`/`CSQ`/`COPS?`/`CREG?`/`CGREG?`/`CEREG?`/`QCFG="usbnet"/"usbcfg"/"ims"`/`QPCMV=?`）
+- [x] 实现 `ModemService` 前台服务骨架与热插拔/断线自动重连恢复
+- [x] 实现 Phase 1 Compose UI（状态仪表盘、USB 接口诊断、Retroid 双屏/输入硬件诊断卡、AT 调试终端、脱敏日志视图、L1/R1 手柄切换页签）
+- [x] 编写 JUnit 4 自动化单元测试（12/12 PASS）
+- [x] 执行 `./gradlew assembleDebug testDebugUnitTest lintDebug` 全绿并安装启动至 Retroid Pocket Duo (`1b0b84fc`) 实机验证
+- [ ] `BLOCKED`：切换无线 ADB 并接入 QDC507 实体模块完成 `USB-001` ~ `USB-007` 实机验收
 
 ## Phase 2：短信功能（PDU 模式） — ⏳ 待开始
 - [ ] 3GPP TS 23.040 PDU 编码（GSM 7-bit / UCS2 / 长短信 UDH）与解码/分片重组 + 单元测试
