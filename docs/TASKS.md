@@ -18,20 +18,30 @@
 - [x] 实现基础遥测与只读模块诊断（`AT`/`ATI`/`ATE0`/`CGMI`/`CGMM`/`CGMR`/`CGSN`/`CPIN?`/`CSQ`/`COPS?`/`CREG?`/`CGREG?`/`CEREG?`/`QCFG="usbnet"/"usbcfg"/"ims"`/`QPCMV=?`）
 - [x] 实现 `ModemService` 前台服务骨架与热插拔/断线自动重连恢复
 - [x] 实现 Phase 1 Compose UI（状态仪表盘、USB 接口诊断、Retroid 双屏/输入硬件诊断卡、AT 调试终端、脱敏日志视图、L1/R1 手柄切换页签）
-- [x] 编写 JUnit 4 自动化单元测试（12/12 PASS）
-- [x] 执行 `./gradlew assembleDebug testDebugUnitTest lintDebug` 全绿并安装启动至 Retroid Pocket Duo (`1b0b84fc`) 实机验证
+- [x] 编写 JUnit 4 自动化单元测试并通过 `./gradlew assembleDebug testDebugUnitTest lintDebug`
+- [x] 安装启动 Phase 1 基线至 Retroid Pocket Duo (`1b0b84fc`) 实机验证
 - [ ] `BLOCKED`：切换无线 ADB 并接入 QDC507 实体模块完成 `USB-001` ~ `USB-007` 实机验收
 
-## Phase 2：短信功能（PDU 模式） — ⏳ 待开始
-- [ ] 3GPP TS 23.040 PDU 编码（GSM 7-bit / UCS2 / 长短信 UDH）与解码/分片重组 + 单元测试
-- [ ] Room 数据库持久化、新短信通知、`+CMTI`/`+CMT` 实时拉取与验证码一键复制
+## Phase 2：短信功能（PDU 模式） — ✅ 代码与单元测试完成（实机待接模块）
+- [x] 实现 3GPP TS 23.040 PDU 编码（GSM 7-bit / UCS2 / 长短信 UDH / UTF-16 代理对安全切分）与解码/乱序重组（`SmsPduCodec`）
+- [x] 实现 SQLite 持久化（`DuoDatabaseHelper` / `SmsRepository` / `SmsStore`）、新短信通知（`SmsNotificationHelper`）、`+CMTI` 实时同步（`SmsServiceController`）与验证码一键复制
+- [x] 实现短信会话/详情/快捷回复 Compose UI（含无硬件本地 `[SIMULATED]` 验证入口）与单元测试（`SmsPduCodecTest`、`SmsServiceControllerTest`）
+- [ ] `BLOCKED`：接入 QDC507 与真实 SIM 卡完成 `SMS-001` ~ `SMS-010` 实机双向短信验收
 
-## Phase 3：电话呼叫控制 — ⏳ 待开始
-- [ ] `ATD`/`ATA`/`ATH`/`AT+CLCC`/`AT+CLIP`/`AT+CEER`/`AT+VTS` 呼叫状态机与通话记录持久化
+## Phase 3：电话呼叫控制 — ✅ 代码与单元测试完成（实机待接模块）
+- [x] 实现呼叫 AT/URC 解析（`CallAtParser`：`ATD`/`ATA`/`ATH`/`AT+CLCC`/`AT+CLIP`/`AT+CEER`/`AT+VTS`）
+- [x] 实现呼叫状态机与通话记录 SQLite 持久化（`CallController` / `CallLogRepository`），严格禁止 `ATD` 自动重试
+- [x] 实现拨号键盘、通话控制面板、来电通知与通话记录 UI（`CallScreen`）及单元测试（`CallAtParserTest`、`CallControllerTest`）
+- [ ] `BLOCKED`：接入 QDC507、SIM 卡与授权测试号码完成 `CALL-001` ~ `CALL-010` 实机呼叫控制验收
+
+## 双屏 UI 与手柄控制（Phase 6 前置基础） — ✅ 代码与单元测试完成（真机部署已暂停）
+- [x] 实现 `DualDisplayHelper`、`SecondaryDeckActivity`（`Display Id != 0` 下屏拨号/通话/快捷短信/AT 控制台）与完整单屏降级
+- [x] 实现 `GamepadKeyRouter`（L1/R1、START/SELECT、通话情景感知 A/B/X/Y 按键映射）与 `GamepadKeyRouterTest`
+- [ ] `BLOCKED`：恢复连接 Retroid Pocket Duo 并完成新版 APK 安装及 `UI-002`~`UI-004` 实机双屏/手柄验证
 
 ## Phase 4：双向语音通话专项 — ⏳ 待开始
-- [ ] 内置直接 USB ADB 客户端（`FF/42/01`）+ QDC507 可逆语音运行时编排
-- [ ] Android 音频桥接验证（方案 A UAC1 vs 方案 B USB Bulk PCM vs 方案 C NDK）
+- [ ] 内置直接 USB ADB 客户端（`FF/42/01`）+ QDC507 可逆语音运行时编排（仅 `/tmp` 临时加载 + SHA-256 校验）
+- [ ] Android 音频桥接实机验证（方案 A UAC1 vs 方案 B USB Bulk PCM vs 方案 C NDK）
 
-## Phase 5–7：后台稳定性 / 双屏与手柄产品化 / 4G 移动网络 — ⏳ 待开始
-- [ ] 合盖（`hall_switch`）供电实测、8h 待机测试、双屏 UI（Display 0 + Display 2）、Retroid 手柄按键映射、ECM 移动网络验证
+## Phase 5–7：后台稳定性 / 产品化完善 / 4G 移动网络 — ⏳ 待开始
+- [ ] 合盖（`hall_switch`）USB 供电实测、8h 待机测试、通讯录、蓝牙耳机切换、ECM 移动网络验证

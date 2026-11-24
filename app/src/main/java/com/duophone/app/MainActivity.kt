@@ -26,9 +26,12 @@ import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.HostHardwareSnapshot
 import com.duophone.app.diagnostics.LogCategory
 import com.duophone.app.service.ModemService
+import com.duophone.app.ui.DualDisplayHelper
 import com.duophone.app.ui.DuoPhoneScreen
 import com.duophone.app.ui.DuoPhoneTheme
 import com.duophone.app.ui.DuoTab
+import com.duophone.app.ui.GamepadAction
+import com.duophone.app.ui.GamepadKeyRouter
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -76,12 +79,20 @@ class MainActivity : ComponentActivity() {
                 }
                 val callState by callController.state.collectAsStateWithLifecycle()
                 val callLogs by callController.callLogs.collectAsStateWithLifecycle()
+                val hw = hardwareState ?: hostHardware
+                val secondaryDisplayId = remember(hw) {
+                    DualDisplayHelper.selectSecondaryDisplayId(
+                        hw.displays.map {
+                            com.duophone.app.ui.DisplayDescriptor(it.displayId, it.name, it.isDefault)
+                        },
+                    )
+                }
 
                 DuoPhoneScreen(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
                     modemState = modemState,
-                    hostHardware = hardwareState ?: hostHardware,
+                    hostHardware = hw,
                     logs = logs,
                     smsMessages = smsMessages,
                     smsThreads = smsThreads,
@@ -90,8 +101,16 @@ class MainActivity : ComponentActivity() {
                     selectedSmsAddress = selectedSmsAddress,
                     callState = callState,
                     callLogs = callLogs,
+                    secondaryDisplayId = secondaryDisplayId,
                     snackbarHostState = snackbarHostState,
                     onConnect = { lifecycleScope.launch { controller.connect() } },
+                    onLaunchSecondaryDeck = {
+                        if (!DualDisplayHelper.launchSecondaryDeck(this@MainActivity)) {
+                            lifecycleScope.launch {
+                                snackbarHostState.showSnackbar("当前未检测到可用副屏或副屏启动受限，继续单屏模式")
+                            }
+                        }
+                    },
                     onRefreshTelemetry = {
                         lifecycleScope.launch { controller.refreshTelemetry(includeIdentityAndConfig = true) }
                     },
@@ -188,31 +207,39 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        val tabs = DuoTab.entries
-        return when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_L1 -> {
-                val next = (selectedTab.ordinal - 1 + tabs.size) % tabs.size
-                selectedTab = tabs[next]
-                DuoLogger.d(LogCategory.INPUT, "gamepad_l1", "Switched tab -> ${selectedTab.name}")
+        val callController = (application as DuoPhoneApplication).callController
+        val action = GamepadKeyRouter.resolve(
+            keyCode = keyCode,
+            currentTab = selectedTab,
+            callPhase = callController.state.value.phase,
+        )
+        return when (action) {
+            is GamepadAction.SwitchTab -> {
+                selectedTab = action.tab
+                DuoLogger.d(LogCategory.INPUT, "gamepad_nav", "keyCode=$keyCode -> tab=${action.tab.name}")
                 true
             }
-            KeyEvent.KEYCODE_BUTTON_R1 -> {
-                val next = (selectedTab.ordinal + 1) % tabs.size
-                selectedTab = tabs[next]
-                DuoLogger.d(LogCategory.INPUT, "gamepad_r1", "Switched tab -> ${selectedTab.name}")
+            GamepadAction.AnswerIncomingCall -> {
+                lifecycleScope.launch { callController.answer() }
+                DuoLogger.d(LogCategory.INPUT, "gamepad_a", "Answered incoming call")
                 true
             }
-            KeyEvent.KEYCODE_BUTTON_START -> {
-                selectedTab = DuoTab.CALL
-                DuoLogger.d(LogCategory.INPUT, "gamepad_start", "Switched tab -> CALL")
+            GamepadAction.HangupOrRejectCall -> {
+                lifecycleScope.launch { callController.hangupOrReject() }
+                DuoLogger.d(LogCategory.INPUT, "gamepad_b", "Rejected/hung up call")
                 true
             }
-            KeyEvent.KEYCODE_BUTTON_SELECT -> {
-                selectedTab = DuoTab.SMS
-                DuoLogger.d(LogCategory.INPUT, "gamepad_select", "Switched tab -> SMS")
+            GamepadAction.ToggleMute -> {
+                callController.toggleMute()
+                DuoLogger.d(LogCategory.INPUT, "gamepad_x", "Toggled mute")
                 true
             }
-            else -> super.onKeyDown(keyCode, event)
+            GamepadAction.ToggleSpeaker -> {
+                callController.toggleSpeaker()
+                DuoLogger.d(LogCategory.INPUT, "gamepad_y", "Toggled speaker")
+                true
+            }
+            null -> super.onKeyDown(keyCode, event)
         }
     }
 

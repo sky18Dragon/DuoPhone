@@ -4,6 +4,20 @@ All notable changes to Duo Phone will be documented in this file.
 
 ## [Unreleased]
 
+### Dual-Screen & Gamepad Controls (2026-11-24)
+- Added `DualDisplayHelper`, `SecondaryDeckActivity`, and `SecondaryDeckScreen` for Retroid Pocket Duo secondary display (`Display #2`) dialer, active-call deck, quick SMS, and quick AT controls with full single-screen fallback.
+- Added `GamepadKeyRouter` mapping `L1`/`R1`, `START` (Call), `SELECT` (SMS), and call-context-aware `A`/`B`/`X`/`Y` controls with unit tests (`GamepadKeyRouterTest`).
+
+### Phase 3 — Call Control & Call History (2026-11-24)
+- Implemented `CallAtParser` (`+CLCC`, `+CEER`, dial number validation, `AT+VTS` DTMF), `CallLogRepository` (SQLite), and `CallController` state machine (`IDLE`/`DIALING`/`ALERTING`/`INCOMING`/`ACTIVE`/`ENDING`) with zero automatic retries on `ATD`/`ATH`/`AT+VTS`.
+- Implemented `CallTabScreen` with T9 dialpad, active call panel, DTMF keypad, call history, incoming call notification, and local `[SIMULATED]` UI test mode.
+- Added 6 unit tests (`CallAtParserTest`, `CallControllerTest`).
+
+### Phase 2 — 3GPP PDU SMS & SQLite Persistence (2026-11-24)
+- Implemented `SmsPduCodec` supporting GSM 7-bit & UCS2 encoding/decoding, UTF-16 surrogate-safe multipart splitting, out-of-order multipart UDH reassembly, alphanumeric senders, and OTP extraction.
+- Implemented `DuoDatabaseHelper` & `SmsRepository` (SQLite), `SmsServiceController`, and `SmsNotificationHelper`.
+- Implemented `SmsTabScreen` (threads, conversation bubbles, quick reply, one-tap OTP copy, local `[SIMULATED]` test trigger) and 6 unit tests (`SmsPduCodecTest`, `SmsServiceControllerTest`).
+
 ### Phase 1 — USB Host, AT Engine, Foreground Service & Diagnostics (2026-11-24)
 - Bootstrapped Gradle 9.1.0 + AGP 9.0.1 + Jetpack Compose Android project (`com.duophone.app`, `compileSdk 36`, `targetSdk 36`).
 - Implemented safe QDC507 USB discovery (`2CA3:4006` / `2C7C:0125`) and `UsbInterfaceClassifier` excluding ADB (`FF/42/01`), UAC, storage, and Diag IF0.
