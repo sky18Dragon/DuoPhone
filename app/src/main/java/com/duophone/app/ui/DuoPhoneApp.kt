@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import com.duophone.app.audio.AudioBridgeState
 import com.duophone.app.audio.LocalAudioRoute
 import com.duophone.app.data.CallLogRecord
+import com.duophone.app.data.ContactRecord
 import com.duophone.app.data.SmsRecord
 import com.duophone.app.device.ModemConfigBackupState
 import com.duophone.app.device.UsbCfgTuple
@@ -144,6 +145,13 @@ fun DuoPhoneScreen(
     onBackupModemConfig: () -> Unit = {},
     onEnableAdbUac: () -> Unit = {},
     onRestoreOriginalUsbCfg: () -> Unit = {},
+    contacts: List<ContactRecord> = emptyList(),
+    hasContactsPermission: Boolean = false,
+    onAdjustCallVolume: (Int) -> Unit = {},
+    onSaveLocalContact: (Long?, String, String, String) -> Unit = { _, _, _, _ -> },
+    onDeleteLocalContact: (Long) -> Unit = {},
+    onSyncSystemContacts: () -> Unit = {},
+    onOpenSmsForNumber: (String) -> Unit = {},
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -264,6 +272,15 @@ fun DuoPhoneScreen(
                     onSimulateOutgoing = onSimulateOutgoingCall,
                     onDeleteCallLog = onDeleteCallLog,
                     onClearCallLogs = onClearCallLogs,
+                    contacts = contacts,
+                    hasContactsPermission = hasContactsPermission,
+                    audioState = audioState,
+                    onSelectAudioRoute = onSelectAudioRoute,
+                    onAdjustCallVolume = onAdjustCallVolume,
+                    onSaveLocalContact = onSaveLocalContact,
+                    onDeleteLocalContact = onDeleteLocalContact,
+                    onSyncSystemContacts = onSyncSystemContacts,
+                    onOpenSmsForNumber = onOpenSmsForNumber,
                 )
                 DuoTab.SMS -> SmsTabScreen(
                     messages = smsMessages,
@@ -278,6 +295,7 @@ fun DuoPhoneScreen(
                     onSimulateIncomingSms = onSimulateIncomingSms,
                     onCopyOtp = onCopyOtp,
                     onDeleteMessage = onDeleteSms,
+                    contacts = contacts,
                 )
                 DuoTab.AT_CONSOLE -> AtConsoleView(
                     modemState = modemState,

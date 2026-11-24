@@ -2,6 +2,7 @@ package com.duophone.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -41,6 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duophone.app.audio.AudioBridgeState
+import com.duophone.app.audio.LocalAudioRoute
+import com.duophone.app.data.ContactPhoneMatcher
+import com.duophone.app.data.ContactRecord
 import com.duophone.app.domain.CallUiPhase
 import com.duophone.app.domain.CallUiState
 import com.duophone.app.domain.ModemUiState
@@ -76,6 +82,10 @@ fun SecondaryDeckScreen(
     onRunAt: (String) -> Unit,
     onSimulateIncomingCall: () -> Unit,
     onCloseDeck: () -> Unit,
+    contacts: List<ContactRecord> = emptyList(),
+    audioState: AudioBridgeState = AudioBridgeState(),
+    onSelectAudioRoute: (LocalAudioRoute) -> Unit = {},
+    onAdjustCallVolume: (Int) -> Unit = {},
 ) {
     var mode by rememberSaveable { mutableStateOf(DeckMode.DIALER) }
     var dialInput by rememberSaveable { mutableStateOf("") }
@@ -156,11 +166,15 @@ fun SecondaryDeckScreen(
             if (callState.phase != CallUiPhase.IDLE) {
                 SecondaryActiveCallDeck(
                     callState = callState,
+                    callerDisplayName = ContactPhoneMatcher.resolveDisplayName(callState.remoteNumber, contacts),
+                    audioState = audioState,
                     onAnswer = onAnswer,
                     onHangupOrReject = onHangupOrReject,
                     onSendDtmf = onSendDtmf,
                     onToggleMute = onToggleMute,
                     onToggleSpeaker = onToggleSpeaker,
+                    onSelectAudioRoute = onSelectAudioRoute,
+                    onAdjustCallVolume = onAdjustCallVolume,
                 )
             } else {
                 when (mode) {
@@ -290,11 +304,15 @@ fun SecondaryDeckScreen(
 @Composable
 private fun SecondaryActiveCallDeck(
     callState: CallUiState,
+    callerDisplayName: String?,
+    audioState: AudioBridgeState,
     onAnswer: () -> Unit,
     onHangupOrReject: () -> Unit,
     onSendDtmf: (String) -> Unit,
     onToggleMute: () -> Unit,
     onToggleSpeaker: () -> Unit,
+    onSelectAudioRoute: (LocalAudioRoute) -> Unit,
+    onAdjustCallVolume: (Int) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -306,31 +324,39 @@ private fun SecondaryActiveCallDeck(
     ) {
         Column(
             modifier = Modifier
-                .weight(if (callState.phase == CallUiPhase.ACTIVE) 0.48f else 1f)
+                .weight(if (callState.phase == CallUiPhase.ACTIVE) 0.50f else 1f)
                 .fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = "${if (callState.isSimulated) "[SIMULATED] " else ""}${callState.phase.label}",
                 color = if (callState.phase == CallUiPhase.ACTIVE) DuoGreen else DuoAmber,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
             )
             Text(
-                text = callState.remoteNumber.ifBlank { "未知号码" },
+                text = callerDisplayName ?: callState.remoteNumber.ifBlank { "未知号码" },
                 color = DuoTextPrimary,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (callerDisplayName != null && callState.remoteNumber.isNotBlank()) {
+                Text(
+                    text = callState.remoteNumber,
+                    color = DuoTextSecondary,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+            }
             if (callState.phase == CallUiPhase.ACTIVE) {
                 Text(
                     text = "计时 ${formatDuration(callState.elapsedSec)}   DTMF: ${callState.dtmfHistory.ifBlank { "—" }}",
                     color = DuoCyan,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -340,19 +366,61 @@ private fun SecondaryActiveCallDeck(
                         onClick = onToggleMute,
                         modifier = Modifier
                             .weight(1f)
-                            .height(36.dp),
+                            .height(32.dp),
                         contentPadding = PaddingValues(0.dp),
                     ) {
-                        Text(if (callState.isMuted) "已静音 (X)" else "静音 (X)", fontSize = 11.sp)
+                        Text(if (callState.isMuted) "已静音 (X)" else "静音 (X)", fontSize = 10.sp)
                     }
                     OutlinedButton(
                         onClick = onToggleSpeaker,
                         modifier = Modifier
                             .weight(1f)
-                            .height(36.dp),
+                            .height(32.dp),
                         contentPadding = PaddingValues(0.dp),
                     ) {
-                        Text(if (callState.isSpeakerOn) "扬声器开 (Y)" else "扬声器关 (Y)", fontSize = 11.sp)
+                        Text("路由:${audioState.localRoute.label}", fontSize = 10.sp, maxLines = 1)
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    audioState.availableRoutes.forEach { route ->
+                        FilterChip(
+                            selected = audioState.localRoute == route,
+                            onClick = { onSelectAudioRoute(route) },
+                            modifier = Modifier.height(26.dp),
+                            label = { Text(route.label, fontSize = 10.sp) },
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { onAdjustCallVolume(-1) },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("音-", fontSize = 10.sp)
+                    }
+                    Text(
+                        text = "音量 ${audioState.callVolumePercent}%",
+                        color = DuoTextSecondary,
+                        fontSize = 10.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(
+                        onClick = { onAdjustCallVolume(+1) },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("音+", fontSize = 10.sp)
                     }
                 }
             }
@@ -368,24 +436,24 @@ private fun SecondaryActiveCallDeck(
                         onClick = onAnswer,
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp),
+                            .height(44.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = DuoGreen),
                     ) {
-                        Text("接听 (A)", color = Color(0xFF04121F), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("接听 (A)", color = Color(0xFF04121F), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
                 Button(
                     onClick = onHangupOrReject,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .height(44.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = DuoRed),
                 ) {
                     Text(
                         text = if (callState.phase == CallUiPhase.INCOMING) "拒接 (B)" else "挂断 (B)",
                         color = Color(0xFF04121F),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                     )
                 }
             }
@@ -394,7 +462,7 @@ private fun SecondaryActiveCallDeck(
         if (callState.phase == CallUiPhase.ACTIVE) {
             CompactDtmfGrid(
                 modifier = Modifier
-                    .weight(0.52f)
+                    .weight(0.50f)
                     .fillMaxHeight(),
                 onSendDtmf = onSendDtmf,
             )

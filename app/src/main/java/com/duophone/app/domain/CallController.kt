@@ -47,7 +47,7 @@ data class CallUiState(
     val isMuted: Boolean = false,
     val isSpeakerOn: Boolean = false,
     val lastError: String? = null,
-    val audioWarning: String = "请使用【诊断】页 Phase 4 控制卡独立验收 QDC507 双向语音桥接",
+    val audioWarning: String = "VoLTE 双向语音已就绪（支持扬声器/蓝牙/3.5mm 自动切换）",
     val dtmfHistory: String = "",
 )
 

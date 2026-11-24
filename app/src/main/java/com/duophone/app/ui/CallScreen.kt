@@ -3,6 +3,7 @@ package com.duophone.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,12 +23,16 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,9 +51,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duophone.app.audio.AudioBridgeState
+import com.duophone.app.audio.LocalAudioRoute
 import com.duophone.app.data.CallDirection
 import com.duophone.app.data.CallLogRecord
 import com.duophone.app.data.CallRecordOutcome
+import com.duophone.app.data.ContactPhoneMatcher
+import com.duophone.app.data.ContactRecord
+import com.duophone.app.data.ContactSource
 import com.duophone.app.domain.CallUiPhase
 import com.duophone.app.domain.CallUiState
 import java.text.SimpleDateFormat
@@ -61,6 +71,11 @@ internal val DIALPAD_ROWS = listOf(
     listOf("7", "8", "9"),
     listOf("*", "0", "#"),
 )
+
+private enum class RightCallPaneMode {
+    HISTORY,
+    CONTACTS,
+}
 
 @Composable
 fun CallTabScreen(
@@ -77,9 +92,72 @@ fun CallTabScreen(
     onSimulateOutgoing: (String) -> Unit,
     onDeleteCallLog: (Long) -> Unit,
     onClearCallLogs: () -> Unit,
+    contacts: List<ContactRecord> = emptyList(),
+    hasContactsPermission: Boolean = false,
+    audioState: AudioBridgeState = AudioBridgeState(),
+    onSelectAudioRoute: (LocalAudioRoute) -> Unit = {},
+    onAdjustCallVolume: (Int) -> Unit = {},
+    onSaveLocalContact: (Long?, String, String, String) -> Unit = { _, _, _, _ -> },
+    onDeleteLocalContact: (Long) -> Unit = {},
+    onSyncSystemContacts: () -> Unit = {},
+    onOpenSmsForNumber: (String) -> Unit = {},
 ) {
     var dialInput by rememberSaveable { mutableStateOf("") }
+    var rightMode by rememberSaveable { mutableStateOf(RightCallPaneMode.HISTORY) }
+    var contactSearch by rememberSaveable { mutableStateOf("") }
+    var editingContactId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var editingName by rememberSaveable { mutableStateOf("") }
+    var editingPhone by rememberSaveable { mutableStateOf("") }
+    var editingNote by rememberSaveable { mutableStateOf("") }
+    var showContactDialog by rememberSaveable { mutableStateOf(false) }
+
     val timeFmt = remember { SimpleDateFormat("MM-dd HH:mm", Locale.US) }
+
+    if (showContactDialog) {
+        AlertDialog(
+            onDismissRequest = { showContactDialog = false },
+            title = { Text(if (editingContactId == null) "新建本地联系人" else "编辑联系人") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editingName,
+                        onValueChange = { editingName = it },
+                        singleLine = true,
+                        label = { Text("姓名") },
+                    )
+                    OutlinedTextField(
+                        value = editingPhone,
+                        onValueChange = { editingPhone = it },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        label = { Text("电话号码") },
+                    )
+                    OutlinedTextField(
+                        value = editingNote,
+                        onValueChange = { editingNote = it },
+                        singleLine = true,
+                        label = { Text("备注（可选）") },
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = editingName.isNotBlank() && ContactPhoneMatcher.normalize(editingPhone).isNotEmpty(),
+                    onClick = {
+                        onSaveLocalContact(editingContactId, editingName, editingPhone, editingNote)
+                        showContactDialog = false
+                    },
+                ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showContactDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
 
     Row(
         modifier = Modifier.fillMaxSize(),
@@ -88,7 +166,7 @@ fun CallTabScreen(
         // Left pane: Active Call Card OR Compact Landscape Dialer
         Column(
             modifier = Modifier
-                .weight(0.55f)
+                .weight(0.54f)
                 .fillMaxSize()
                 .background(DuoSurface, RoundedCornerShape(12.dp))
                 .border(1.dp, DuoSurfaceAlt, RoundedCornerShape(12.dp))
@@ -96,25 +174,35 @@ fun CallTabScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (callState.phase != CallUiPhase.IDLE) {
+                val callerName = ContactPhoneMatcher.resolveDisplayName(callState.remoteNumber, contacts)
                 ActiveCallPanel(
                     callState = callState,
+                    callerDisplayName = callerName,
+                    audioState = audioState,
                     onAnswer = onAnswer,
                     onHangupOrReject = onHangupOrReject,
                     onSendDtmf = onSendDtmf,
                     onToggleMute = onToggleMute,
                     onToggleSpeaker = onToggleSpeaker,
+                    onSelectAudioRoute = onSelectAudioRoute,
+                    onAdjustCallVolume = onAdjustCallVolume,
                 )
             } else {
+                val dialMatchedName = remember(dialInput, contacts) {
+                    ContactPhoneMatcher.resolveDisplayName(dialInput, contacts)
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "拨号键盘 (Phase 3)",
+                        text = dialMatchedName?.let { "拨号 · $it" } ?: "拨号键盘",
                         color = DuoAccent,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     if (!callState.lastError.isNullOrBlank()) {
                         Text(
@@ -166,10 +254,10 @@ fun CallTabScreen(
             }
         }
 
-        // Right pane: Call History
+        // Right pane: Call History OR Contacts
         Column(
             modifier = Modifier
-                .weight(0.45f)
+                .weight(0.46f)
                 .fillMaxSize()
                 .background(DuoSurface, RoundedCornerShape(12.dp))
                 .border(1.dp, DuoSurfaceAlt, RoundedCornerShape(12.dp))
@@ -178,16 +266,23 @@ fun CallTabScreen(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "通话记录 (${callLogs.size})",
-                    color = DuoAccent,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
+                FilterChip(
+                    selected = rightMode == RightCallPaneMode.HISTORY,
+                    onClick = { rightMode = RightCallPaneMode.HISTORY },
+                    modifier = Modifier.height(28.dp),
+                    label = { Text("通话记录(${callLogs.size})", fontSize = 11.sp) },
                 )
-                if (callLogs.isNotEmpty()) {
+                FilterChip(
+                    selected = rightMode == RightCallPaneMode.CONTACTS,
+                    onClick = { rightMode = RightCallPaneMode.CONTACTS },
+                    modifier = Modifier.height(28.dp),
+                    label = { Text("通讯录(${contacts.size})", fontSize = 11.sp) },
+                )
+                Spacer(Modifier.weight(1f))
+                if (rightMode == RightCallPaneMode.HISTORY && callLogs.isNotEmpty()) {
                     OutlinedButton(
                         onClick = onClearCallLogs,
                         modifier = Modifier.height(28.dp),
@@ -195,76 +290,276 @@ fun CallTabScreen(
                     ) {
                         Text("清空", fontSize = 11.sp)
                     }
+                } else if (rightMode == RightCallPaneMode.CONTACTS) {
+                    OutlinedButton(
+                        onClick = {
+                            editingContactId = null
+                            editingName = ""
+                            editingPhone = dialInput
+                            editingNote = ""
+                            showContactDialog = true
+                        },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("+新建", fontSize = 11.sp, color = DuoGreen)
+                    }
                 }
             }
 
-            if (callLogs.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "暂无通话记录。\n输入号码后点击右侧绿色「拨出」按钮发起呼叫。",
-                        color = DuoTextSecondary,
-                        fontSize = 12.sp,
-                    )
+            if (rightMode == RightCallPaneMode.HISTORY) {
+                if (callLogs.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "暂无通话记录。\n输入号码后点击绿色「拨出」按钮发起呼叫。",
+                            color = DuoTextSecondary,
+                            fontSize = 12.sp,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(callLogs, key = { it.id }) { log ->
+                            val badgeColor = when (log.outcome) {
+                                CallRecordOutcome.ANSWERED, CallRecordOutcome.OUTGOING_CONNECTED -> DuoGreen
+                                CallRecordOutcome.MISSED, CallRecordOutcome.REJECTED -> DuoAmber
+                                CallRecordOutcome.OUTGOING_FAILED -> DuoRed
+                            }
+                            val matchedName = ContactPhoneMatcher.resolveDisplayName(log.number, contacts)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, DuoSurfaceAlt, RoundedCornerShape(10.dp))
+                                    .clickable { dialInput = log.number },
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1629)),
+                                shape = RoundedCornerShape(10.dp),
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = "${if (log.direction == CallDirection.INCOMING) "↙ " else "↗ "}${matchedName ?: log.number}",
+                                            color = DuoTextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(
+                                            text = log.outcome.label,
+                                            color = badgeColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                    if (matchedName != null) {
+                                        Text(
+                                            text = log.number,
+                                            color = DuoCyan,
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(2.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            text = "${timeFmt.format(Date(log.startedAtMs))} · ${formatDuration(log.durationSec)}" +
+                                                if (log.endReason.isNotBlank()) " · ${log.endReason}" else "",
+                                            color = DuoTextSecondary,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        if (matchedName == null && ContactPhoneMatcher.normalize(log.number).isNotEmpty()) {
+                                            Text(
+                                                text = "存",
+                                                color = DuoAccent,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier
+                                                    .padding(start = 6.dp)
+                                                    .clickable {
+                                                        editingContactId = null
+                                                        editingName = ""
+                                                        editingPhone = log.number
+                                                        editingNote = ""
+                                                        showContactDialog = true
+                                                    },
+                                            )
+                                        }
+                                        Text(
+                                            text = "删",
+                                            color = DuoRed,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier
+                                                .padding(start = 8.dp)
+                                                .clickable { onDeleteCallLog(log.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                // Contacts sub-pane
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    items(callLogs, key = { it.id }) { log ->
-                        val badgeColor = when (log.outcome) {
-                            CallRecordOutcome.ANSWERED, CallRecordOutcome.OUTGOING_CONNECTED -> DuoGreen
-                            CallRecordOutcome.MISSED, CallRecordOutcome.REJECTED -> DuoAmber
-                            CallRecordOutcome.OUTGOING_FAILED -> DuoRed
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(30.dp)
+                            .background(Color(0xFF0A0F1D), RoundedCornerShape(8.dp))
+                            .border(1.dp, DuoSurfaceAlt, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (contactSearch.isEmpty()) {
+                            Text("搜索姓名或号码", color = DuoTextSecondary, fontSize = 11.sp)
                         }
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, DuoSurfaceAlt, RoundedCornerShape(10.dp))
-                                .clickable { dialInput = log.number },
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1629)),
-                            shape = RoundedCornerShape(10.dp),
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "${if (log.direction == CallDirection.INCOMING) "↙ " else "↗ "}${log.number}",
-                                        color = DuoTextPrimary,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 12.sp,
-                                    )
-                                    Text(
-                                        text = log.outcome.label,
-                                        color = badgeColor,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "${timeFmt.format(Date(log.startedAtMs))} · ${formatDuration(log.durationSec)}" +
-                                            if (log.endReason.isNotBlank()) " · ${log.endReason}" else "",
-                                        color = DuoTextSecondary,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Text(
-                                        text = "删除",
-                                        color = DuoRed,
-                                        fontSize = 10.sp,
-                                        modifier = Modifier
-                                            .padding(start = 6.dp)
-                                            .clickable { onDeleteCallLog(log.id) },
-                                    )
+                        BasicTextField(
+                            value = contactSearch,
+                            onValueChange = { contactSearch = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = DuoTextPrimary, fontSize = 12.sp),
+                            cursorBrush = SolidColor(DuoAccent),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onSyncSystemContacts,
+                        modifier = Modifier.height(30.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            text = if (hasContactsPermission) "同步系统" else "导入系统",
+                            fontSize = 11.sp,
+                            color = DuoCyan,
+                        )
+                    }
+                }
+
+                val filteredContacts = remember(contacts, contactSearch) {
+                    val q = contactSearch.trim().lowercase()
+                    if (q.isEmpty()) {
+                        contacts
+                    } else {
+                        contacts.filter {
+                            it.name.lowercase().contains(q) ||
+                                it.phone.lowercase().contains(q) ||
+                                it.normalizedPhone.contains(q)
+                        }
+                    }
+                }
+
+                if (filteredContacts.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (contacts.isEmpty()) "暂无联系人，可点击「+新建」或「导入系统」。" else "无匹配联系人",
+                            color = DuoTextSecondary,
+                            fontSize = 12.sp,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(filteredContacts, key = { "${it.source.name}_${it.id}_${it.normalizedPhone}" }) { contact ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, DuoSurfaceAlt, RoundedCornerShape(10.dp))
+                                    .clickable { dialInput = contact.phone },
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1629)),
+                                shape = RoundedCornerShape(10.dp),
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = contact.name,
+                                            color = DuoTextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(
+                                            text = contact.source.label,
+                                            color = if (contact.source == ContactSource.LOCAL) DuoAccent else DuoCyan,
+                                            fontSize = 10.sp,
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = contact.phone,
+                                            color = DuoTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(
+                                                text = "拨号",
+                                                color = DuoGreen,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.clickable {
+                                                    dialInput = contact.phone
+                                                    if (modemReady) onDial(contact.phone)
+                                                },
+                                            )
+                                            Text(
+                                                text = "短信",
+                                                color = DuoCyan,
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.clickable { onOpenSmsForNumber(contact.phone) },
+                                            )
+                                            if (contact.source == ContactSource.LOCAL) {
+                                                Text(
+                                                    text = "改",
+                                                    color = DuoAccent,
+                                                    fontSize = 10.sp,
+                                                    modifier = Modifier.clickable {
+                                                        editingContactId = contact.id
+                                                        editingName = contact.name
+                                                        editingPhone = contact.phone
+                                                        editingNote = contact.note
+                                                        showContactDialog = true
+                                                    },
+                                                )
+                                                Text(
+                                                    text = "删",
+                                                    color = DuoRed,
+                                                    fontSize = 10.sp,
+                                                    modifier = Modifier.clickable { onDeleteLocalContact(contact.id) },
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -470,11 +765,15 @@ internal fun CompactDtmfGrid(
 @Composable
 private fun ActiveCallPanel(
     callState: CallUiState,
+    callerDisplayName: String?,
+    audioState: AudioBridgeState,
     onAnswer: () -> Unit,
     onHangupOrReject: () -> Unit,
     onSendDtmf: (String) -> Unit,
     onToggleMute: () -> Unit,
     onToggleSpeaker: () -> Unit,
+    onSelectAudioRoute: (LocalAudioRoute) -> Unit,
+    onAdjustCallVolume: (Int) -> Unit,
 ) {
     if (callState.phase == CallUiPhase.ACTIVE) {
         Row(
@@ -483,30 +782,38 @@ private fun ActiveCallPanel(
         ) {
             Column(
                 modifier = Modifier
-                    .weight(0.50f)
+                    .weight(0.52f)
                     .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = if (callState.isSimulated) "[SIMULATED] ${callState.phase.label}" else callState.phase.label,
                     color = DuoGreen,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                 )
                 Text(
-                    text = callState.remoteNumber.ifBlank { "未知号码" },
+                    text = callerDisplayName ?: callState.remoteNumber.ifBlank { "未知号码" },
                     color = DuoTextPrimary,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (callerDisplayName != null && callState.remoteNumber.isNotBlank()) {
+                    Text(
+                        text = callState.remoteNumber,
+                        color = DuoTextSecondary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                }
                 Text(
                     text = "计时 ${formatDuration(callState.elapsedSec)}" +
                         if (callState.dtmfHistory.isNotEmpty()) " · ${callState.dtmfHistory}" else "",
                     color = DuoCyan,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                 )
                 Row(
@@ -517,27 +824,72 @@ private fun ActiveCallPanel(
                         onClick = onToggleMute,
                         modifier = Modifier
                             .weight(1f)
-                            .height(34.dp),
+                            .height(30.dp),
                         contentPadding = PaddingValues(0.dp),
                     ) {
-                        Text(if (callState.isMuted) "已静音(X)" else "静音(X)", fontSize = 11.sp)
+                        Text(if (callState.isMuted) "已静音(X)" else "静音(X)", fontSize = 10.sp)
                     }
                     OutlinedButton(
                         onClick = onToggleSpeaker,
                         modifier = Modifier
                             .weight(1f)
-                            .height(34.dp),
+                            .height(30.dp),
                         contentPadding = PaddingValues(0.dp),
                     ) {
-                        Text(if (callState.isSpeakerOn) "扬声开(Y)" else "扬声关(Y)", fontSize = 11.sp)
+                        Text("路由:${audioState.localRoute.label}", fontSize = 10.sp, maxLines = 1)
                     }
                 }
+
+                // Route selector + Call volume control
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    audioState.availableRoutes.forEach { route ->
+                        FilterChip(
+                            selected = audioState.localRoute == route,
+                            onClick = { onSelectAudioRoute(route) },
+                            modifier = Modifier.height(26.dp),
+                            label = { Text(route.label, fontSize = 10.sp) },
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { onAdjustCallVolume(-1) },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("音-", fontSize = 10.sp)
+                    }
+                    Text(
+                        text = "音量 ${audioState.callVolumePercent}%",
+                        color = DuoTextSecondary,
+                        fontSize = 10.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(
+                        onClick = { onAdjustCallVolume(+1) },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("音+", fontSize = 10.sp)
+                    }
+                }
+
                 Spacer(Modifier.weight(1f))
                 Button(
                     onClick = onHangupOrReject,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp),
+                        .height(36.dp),
                     contentPadding = PaddingValues(0.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = DuoRed),
                 ) {
@@ -547,7 +899,7 @@ private fun ActiveCallPanel(
 
             CompactDtmfGrid(
                 modifier = Modifier
-                    .weight(0.50f)
+                    .weight(0.48f)
                     .fillMaxHeight(),
                 onSendDtmf = onSendDtmf,
             )
@@ -566,12 +918,19 @@ private fun ActiveCallPanel(
                 fontSize = 14.sp,
             )
             Text(
-                text = callState.remoteNumber.ifBlank { "未知号码" },
+                text = callerDisplayName ?: callState.remoteNumber.ifBlank { "未知号码" },
                 color = DuoTextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
             )
+            if (callerDisplayName != null && callState.remoteNumber.isNotBlank()) {
+                Text(
+                    text = callState.remoteNumber,
+                    color = DuoCyan,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
             Text(
                 text = callState.audioWarning,
                 color = DuoAmber,
