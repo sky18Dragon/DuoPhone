@@ -4,6 +4,12 @@ All notable changes to Duo Phone will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 4 — USB ADB Client, QDC507 Reversible Voice Runtime & UAC Audio Bridge (2026-11-24)
+- Implemented clean-room USB ADB wire framing (`AdbWireProtocol`, `AdbShellMarker`, `AdbSyncCodec`) and `AndroidUsbAdbClient` claiming only `FF/42/01` bulk endpoints (with explicit `AUTH` challenge abort and clean interface release).
+- Implemented `Qdc507VoiceRuntime` enforcing ADR-004 GPL-2.0 isolation (reads external assets from `filesDir/voice_runtime/` only after exact SHA-256 verification, pushes strictly to `/tmp/duophone-voice`, never writes persistent partitions, and never calls `rmmod`).
+- Implemented `StatefulLinearResampler`, `PcmLevelMeter` (with digital-silence frame counter for Android 16 concurrent capture detection), and `AndroidAudioBridge` (`AudioRecord` + `AEC`/`NS` + `AudioTrack` UAC endpoints + API 31+ `setCommunicationDevice` / legacy fallback).
+- Wired `RECORD_AUDIO` / `MODIFY_AUDIO_SETTINGS` permissions, `CallController` mute/speaker/hangup hooks, Diagnostics Phase 4 control panel, and 10 new JVM tests (`AdbWireProtocolTest`, `Qdc507VoiceRuntimeTest`, `PcmResamplerTest`); full suite 36/36 PASS, 0 Lint errors.
+
 ### Dual-Screen & Gamepad Controls (2026-11-24)
 - Added `DualDisplayHelper`, `SecondaryDeckActivity`, and `SecondaryDeckScreen` for Retroid Pocket Duo secondary display (`Display #2`) dialer, active-call deck, quick SMS, and quick AT controls with full single-screen fallback.
 - Added `GamepadKeyRouter` mapping `L1`/`R1`, `START` (Call), `SELECT` (SMS), and call-context-aware `A`/`B`/`X`/`Y` controls with unit tests (`GamepadKeyRouterTest`).

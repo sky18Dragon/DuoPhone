@@ -1,10 +1,13 @@
 package com.duophone.app
 
 import android.app.Application
+import com.duophone.app.audio.AndroidAudioBridge
 import com.duophone.app.data.CallLogRepository
 import com.duophone.app.data.DuoDatabaseHelper
 import com.duophone.app.data.SmsRepository
+import com.duophone.app.device.AndroidUsbAdbClient
 import com.duophone.app.device.AndroidUsbSerialTransport
+import com.duophone.app.device.Qdc507VoiceRuntime
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.FileAndAndroidLogSink
 import com.duophone.app.diagnostics.LogCategory
@@ -27,6 +30,15 @@ class DuoPhoneApplication : Application() {
     lateinit var usbTransport: AndroidUsbSerialTransport
         private set
 
+    lateinit var adbClient: AndroidUsbAdbClient
+        private set
+
+    lateinit var voiceRuntime: Qdc507VoiceRuntime
+        private set
+
+    lateinit var audioBridge: AndroidAudioBridge
+        private set
+
     lateinit var modemController: ModemController
         private set
 
@@ -44,6 +56,10 @@ class DuoPhoneApplication : Application() {
         smsRepository = SmsRepository(dbHelper)
         callLogRepository = CallLogRepository(dbHelper)
         usbTransport = AndroidUsbSerialTransport(this)
+        adbClient = AndroidUsbAdbClient(this)
+        val voiceDir = File(filesDir, "voice_runtime").apply { mkdirs() }
+        voiceRuntime = Qdc507VoiceRuntime(adbClient, voiceDir)
+        audioBridge = AndroidAudioBridge(this)
         modemController = ModemController(
             transport = usbTransport,
             requestUsbPermission = {
@@ -74,6 +90,9 @@ class DuoPhoneApplication : Application() {
             callLogStore = callLogRepository,
             onIncomingCallAlert = { num -> SmsNotificationHelper.showIncomingCall(this, num) },
             onIncomingCallDismiss = { SmsNotificationHelper.cancelIncomingCall(this) },
+            onMuteChanged = { muted -> audioBridge.setMuted(muted) },
+            onSpeakerChanged = { speaker -> audioBridge.setSpeakerEnabled(speaker) },
+            onRealCallEnded = { audioBridge.stop() },
         )
         DuoLogger.i(LogCategory.SERVICE, "app_create", "DuoPhoneApplication initialized")
     }

@@ -2,15 +2,15 @@
 
 > 严格区分**模拟/单元测试**与**实机硬件测试**；绝不编造未实测项。
 
-## 1. 自动化单元测试与静态检查（Phase 1–3 + 双屏/手柄 — 2026-11-24）
+## 1. 自动化单元测试与静态检查（Phase 1–4 + 双屏/手柄 — 2026-11-24）
 
 | 项目 | 命令 | 状态 | 实际结果 |
 | --- | --- | --- | --- |
-| Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (8.8 MB) |
-| JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **26 / 26 全部通过**（9 个测试套件，0 失败，0 跳过） |
-| Android Lint 静态检查 | `./gradlew lintDebug` | `PASS` | **0 Error**（修复 `SecondaryDeckActivity` API 30 `display` `NewApi` 后通过） |
+| Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (`9,270,875` bytes / 8.84 MiB) |
+| JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **36 / 36 全部通过**（12 个测试套件，0 失败，0 跳过） |
+| Android Lint 静态检查 | `./gradlew lintDebug` | `PASS` | **0 Error**（退出码 0；已覆盖 API 26/31 音频路由与 `RECORD_AUDIO` 权限检查） |
 
-### 单元测试覆盖明细（模拟测试，26 / 26 PASS）
+### 单元测试覆盖明细（模拟测试，36 / 36 PASS）
 1. `UsbInterfaceClassifierTest`（2 项）：`2CA3:4006` / `2C7C:0125` 匹配；严格排除 ADB (`FF/42/01`)、UAC (`01`)、CDC (`02`/`0A`)、存储 (`08`)、Diag (`IF0`)，并按 `IF2 → IF3 → IF1` 排序。
 2. `PiiRedactorTest`（1 项）：手机号、IMEI、`ATD` 拨号串、短信验证码自动脱敏。
 3. `AtProtocolParsersTest`（4 项）：非幂等指令禁止重试守卫（`ATD`/`AT+CMGS`/`AT+VTS`/`AT+CFUN=1,1`/`AT+QCFG` 写）；USB 拆包行帧器与短信 `>` 提示符检测；URC 与在途查询响应分流；`+CSQ`/`+COPS?`(含 UCS2 运营商解码)/`+CPIN?`/`+CEREG?`/`+QCFG` 解析。
@@ -20,6 +20,9 @@
 7. `CallAtParserTest`（3 项）：拨号号码规范化与注入防护、DTMF `AT+VTS` 校验、`+CLCC` 多行语音过滤与 `+CEER` 错误解析。
 8. `CallControllerTest`（3 项）：去电 `ATD` → `+CLCC` active → `NO CARRIER` 远端挂断与记录落盘；来电 `RING` + `+CLIP` → `ATA` 接听 / `ATH` 拒接；`ATD` `ERROR` + `+CEER` 明确失败原因且零重试。
 9. `GamepadKeyRouterTest`（2 项）：双屏显示选择与单屏降级判断；L1/R1/START/SELECT 与基于通话状态的 A/B/X/Y 手柄键路由。
+10. `AdbWireProtocolTest`（3 项）：ADB USB 24B 小端包头/校验和/魔数反码编解码与损坏包拦截、`sh -c` 退出码封装解析、`sync:` `SEND`/`DATA`/`DONE`/`OKAY`/`FAIL` 传输帧。
+11. `Qdc507VoiceRuntimeTest`（3 项）：缺失或 SHA-256 不匹配外部资源拦截（`ASSETS_MISSING`，不发送任何推包/加载指令）、只读环境探测（内核/`aprv3`/`voice`/`/dev/snd`/跨括号 `/proc/<pid>/stat` 启动时间戳）、以及安全停机回滚（带进程启动时钟核验的 `SIGTERM` + `/run/voc_svr` `T/T/B`，严禁 `rmmod`）。
+12. `PcmResamplerTest`（4 项）：`8kHz → 48kHz` 跨帧状态线性上采样连续性、`48kHz → 8kHz` 下采样频域/幅度保持、同采样率直通与 `S16_LE` 编解码往返、`PcmLevelMeter` dBFS 与全零静音识别。
 
 ---
 
@@ -35,13 +38,14 @@
 | 手柄 L1/R1 页签切换实测 | `PASS` | `duophone-latest.log` 记录 `D/DUO_INPUT gamepad_r1 / gamepad_l1` 切换至 `AT_CONSOLE` / `DIAGNOSTICS` |
 | USB 广播接收器注册（Android 16） | `PASS` | `I/DUO_USB receivers_registered: USB attach/detach and permission receivers active` |
 
-### 2.2 Phase 2 / Phase 3 / 双屏新版实机验证与 QDC507 硬件验收
+### 2.2 Phase 2 / Phase 3 / 双屏实机部署与 QDC507 硬件验收（2026-11-24 19:46 起，用户实测反馈）
 
-| 用例 / 检查项 | 状态 | 说明与阻塞原因 |
+| 用例 / 检查项 | 状态 | 实际结果 / 说明 |
 | --- | --- | --- |
-| Phase 2/3/双屏 APK (`8.8 MB`) 真机安装与 `UI-002`~`UI-004` 实机交互 | `BLOCKED` | 18:11 检查时 `1b0b84fc` 已断开 ADB 连接，且用户指示“暂停安装操作”；待重新连入设备并恢复安装后实测 |
-| `USB-001` ~ `USB-007`（QDC507 实机热插拔与 AT 握手） | `BLOCKED` | 外部阻塞：QDC507 4G 模块尚未接入 |
-| `SMS-001` ~ `SMS-010`（真实 SIM 卡收发短信） | `BLOCKED` | 外部阻塞：QDC507 4G 模块与 SIM 卡尚未接入 |
-| `CALL-001` ~ `CALL-010`（真实运营商呼叫控制） | `BLOCKED` | 外部阻塞：QDC507 4G 模块、SIM 卡与授权测试号码尚未接入 |
-| `AUDIO-001` ~ `AUDIO-010`（双向语音通话） | `NOT_TESTED` | 待 Phase 4 双向语音专项开发与实测 |
+| Phase 2/3/双屏 APK (`8.8 MB`, `7d39e71`) 安装与双屏拉起 | `PASS` | `19:46` 无线/ADB 部署至 `1b0b84fc` → `Success`；`MainActivity` (`PID 26861`)、`ModemService` (`isForeground=true types=0x00000010`)、`Display Id=0` 与 `Display Id=2` 均正常点亮 |
+| `USB-001` ~ `USB-003`（QDC507 直连识别、权限与 AT 握手） | `PASS` | 用户确认已将大疆 QDC507 模块直接连接至 Retroid Pocket Duo 并连接成功（底层状态机到达 `READY` 才允许发送/同步短信） |
+| `SMS-001` ~ `SMS-004`（真实 SIM 卡基础发短信与收短信） | `PASS` | 用户实测确认：**“已直接连接大疆模块，连接成功，可以发短信和接收短信”**；具体设备侧 `模块状态`（`USBCFG`/`IMS`/`CGMR`）与长短信/验证码专项 (`SMS-005`~`SMS-010`) 待采集截图或日志核验 |
+| `USB-004` ~ `USB-007`、`UI-002` ~ `UI-004` | `NOT_TESTED` | 待采集实机热插拔重连及双屏拨号/手柄按键交互反馈 |
+| `CALL-001` ~ `CALL-010`（真实运营商呼叫控制） | `NOT_TESTED` | 待用户实测 `ATD`/`ATA`/`ATH`/`+CLCC` 呼叫控制与状态显示 |
+| `AUDIO-001` ~ `AUDIO-010`（双向语音通话） | `NOT_TESTED` | Phase 4 代码/单测/Diagnostics UI 已完成并合入最新包（未推送到被 QDC507 占用的 Retroid），待部署并配合外部 `voice_runtime` 资源实机验收（含单工/并发录音零帧检出验证） |
 | `SYS-001` ~ `SYS-008`（后台稳定性与合盖功耗） | `NOT_TESTED` | 待 Phase 5 实测 |
