@@ -7,10 +7,10 @@
 | 项目 | 命令 | 状态 | 实际结果 |
 | --- | --- | --- | --- |
 | Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (`9,472,330` bytes / 9.03 MiB，含 Phase 4 备份/解锁/ADB+UAC 控制) |
-| JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **39 / 39 全部通过**（13 个测试套件，0 失败，0 跳过） |
+| JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **40 / 40 全部通过**（13 个测试套件，0 失败，0 跳过） |
 | Android Lint 静态检查 | `./gradlew lintDebug` | `PASS` | **0 Error**（退出码 0；已覆盖 API 26/31 音频路由与 `RECORD_AUDIO` 权限检查） |
 
-### 单元测试覆盖明细（模拟测试，39 / 39 PASS）
+### 单元测试覆盖明细（模拟测试，40 / 40 PASS）
 1. `UsbInterfaceClassifierTest`（2 项）：`2CA3:4006` / `2C7C:0125` 匹配；严格排除 ADB (`FF/42/01`)、UAC (`01`)、CDC (`02`/`0A`)、存储 (`08`)、Diag (`IF0`)，并按 `IF2 → IF3 → IF1` 排序。
 2. `PiiRedactorTest`（1 项）：手机号、IMEI、`ATD` 拨号串、短信验证码自动脱敏。
 3. `AtProtocolParsersTest`（4 项）：非幂等指令禁止重试守卫（`ATD`/`AT+CMGS`/`AT+VTS`/`AT+CFUN=1,1`/`AT+QCFG` 写）；USB 拆包行帧器与短信 `>` 提示符检测；URC 与在途查询响应分流；`+CSQ`/`+COPS?`(含 UCS2 运营商解码)/`+CPIN?`/`+CEREG?`/`+QCFG` 解析。
@@ -22,7 +22,7 @@
 9. `GamepadKeyRouterTest`（2 项）：双屏显示选择与单屏降级判断；L1/R1/START/SELECT 与基于通话状态的 A/B/X/Y 手柄键路由。
 10. `AdbWireProtocolTest`（3 项）：ADB USB 24B 小端包头/校验和/魔数反码编解码与损坏包拦截、`sh -c` 退出码封装解析、`sync:` `SEND`/`DATA`/`DONE`/`OKAY`/`FAIL` 传输帧。
 11. `Qdc507VoiceRuntimeTest`（3 项）：缺失或 SHA-256 不匹配外部资源拦截（`ASSETS_MISSING`，不发送任何推包/加载指令）、只读环境探测（内核/`aprv3`/`voice`/`/dev/snd`/跨括号 `/proc/<pid>/stat` 启动时间戳）、以及安全停机回滚（带进程启动时钟核验的 `SIGTERM` + `/run/voc_svr` `T/T/B`，严禁 `rmmod`）。
-12. `PcmResamplerTest`（4 项）：`8kHz → 48kHz` 跨帧状态线性上采样连续性、`48kHz → 8kHz` 下采样频域/幅度保持、同采样率直通与 `S16_LE` 编解码往返、`PcmLevelMeter` dBFS 与全零静音识别。
+12. `PcmResamplerTest`（5 项）：`8kHz → 48kHz` 跨帧状态线性上采样连续性、`48kHz → 8kHz` 下采样频域/幅度保持、同采样率直通与 `S16_LE` 编解码往返、`PcmLevelMeter` dBFS 与全零静音识别、以及 `PcmVoiceConditioner` 直流抑制 / `+9.5 dB` 语音频带软限幅放大 / 回声衰减验证。
 13. `Qdc507ConfigManagerTest`（3 项）：`$1$` MD5-crypt 向量（`$1$12345678$0jXKXQwSwMxYoegx0S.I.1`）与 15 字符 `QADBKEY` 派生、`UsbCfgTuple` 原厂 VID/PID 保留与 `AT+QADBKEY` 日志脱敏、无备份或通话中拦截与受控写入/回读/还原流程。
 
 ---
@@ -49,5 +49,6 @@
 | `UI-002`（双屏横屏拨号布局重构实机验证） | `PASS` | 实机测试主屏与下屏（`Display#2`）横屏拨号按键及右侧 `拨出 (ATD)` 完整可见，顺利发起多通真实拨号与通话中 DTMF 操作 |
 | `CALL-001` ~ `CALL-007`（真实运营商去电、来电、DTMF 与挂断） | `PASS` | `duophone-latest.log` 实机记录：`ATD` 去电成功并正确过滤 `+CLCC` 两条 `mode=1` 数据通道只保留语音通话；通话中发送 `AT+VTS="2/5/9/7/5/3/0"` 全部 `OK`；`ATH` 主动挂断成功；呼入 `RING` + `+CLIP` 号码显示正常 → `ATA` 接听 → 对端挂断 `NO CARRIER` 正常回退空闲 |
 | `CALL-008` ~ `CALL-010`（异常 `+CEER` / 锁屏来电）、`USB-004` ~ `USB-007`、`SMS-005` ~ `SMS-010`、`UI-003` ~ `UI-004` | `NOT_TESTED` | 待补测热插拔 20 次稳定性、锁屏通知细节及失败错误码分支 |
-| `AUDIO-001` ~ `AUDIO-010`（双向语音通话 — 独立验收项） | `NOT_TESTED` | 实测确认**通话无声音（预期现象）**：实机 `usbcfg` 当前为 `adb=0, uac=0`，待按 IMEI 备份配置并获用户授权开启 `adb=1, uac=1` 后再侧载 `/tmp` 语音运行时实测 |
+| `AUDIO-001` ~ `AUDIO-004`（UAC 识别与双向 VoLTE 语音互通 — 独立验收项） | `PASS` *(音质调优中)* | 实机完整打通：`AT+QADBKEY` 解锁与 `usbcfg` 切为 `1,1`（保留 `0x2CA3:0x4006`）→ `/tmp` 加载 `aprv3`/`voice` + ACDB 校准 → `Baiwang` UAC 双向声卡（`8000 Hz`）识别；真实通话实测确认 **Android 16 双路并发采集均 `not silenced`**，下行 `-35.6~-48.8 dBFS` 可清晰听到对端，上行 `-15.8~-33.0 dBFS` 对端可听到（用户反馈偏小声且掌机侧有回音）；已追加 `USAGE_ALARM`、`PcmVoiceConditioner` 增益及硬件+NLP 回声压制待复测 |
+| `AUDIO-005` ~ `AUDIO-010`（30min 稳定性 / 蓝牙有线切换 / 重连恢复） | `NOT_TESTED` | 待上行音量与回声复测通过后继续专项验收 |
 | `SYS-001` ~ `SYS-008`（后台稳定性与合盖功耗） | `NOT_TESTED` | 待 Phase 5 实测 |

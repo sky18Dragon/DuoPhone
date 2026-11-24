@@ -1,9 +1,12 @@
 package com.duophone.app.audio
 
+import kotlin.math.PI
+import kotlin.math.exp
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlin.math.tanh
 
 /**
  * Stateful linear PCM 16-bit mono resampler with cross-frame phase and sample continuity.
@@ -160,5 +163,78 @@ object PcmLevelMeter {
             out[i * 2 + 1] = ((s shr 8) and 0xFF).toByte()
         }
         return out
+    }
+}
+
+/**
+ * Clean-room telephone-band audio conditioner (`80 Hz` high-pass + two-stage `3400 Hz` anti-alias
+ * low-pass), smooth soft-limited speech gain, and optional smoothly-slewed attenuation for
+ * speakerphone echo suppression (NLP).
+ */
+class PcmVoiceConditioner(
+    val sampleRateHz: Int,
+) {
+    init {
+        require(sampleRateHz > 0) { "sampleRateHz must be positive: $sampleRateHz" }
+    }
+
+    private val highPassAlpha: Double
+    private val lowPassAlpha: Double
+
+    private var prevInput = 0.0
+    private var hpOut = 0.0
+    private var lpStage1 = 0.0
+    private var lpStage2 = 0.0
+    private var currentGain = 1.0
+
+    init {
+        val dt = 1.0 / sampleRateHz.toDouble()
+        val hpRc = 1.0 / (2.0 * PI * 80.0)
+        highPassAlpha = hpRc / (hpRc + dt)
+        val lpCutoff = minOf(3_400.0, sampleRateHz.toDouble() * 0.45)
+        lowPassAlpha = 1.0 - exp(-2.0 * PI * lpCutoff / sampleRateHz.toDouble())
+    }
+
+    fun reset() {
+        prevInput = 0.0
+        hpOut = 0.0
+        lpStage1 = 0.0
+        lpStage2 = 0.0
+        currentGain = 1.0
+    }
+
+    fun processInPlace(
+        samples: ShortArray,
+        length: Int = samples.size,
+        targetGain: Float = DEFAULT_SPEECH_GAIN,
+    ) {
+        val target = targetGain.toDouble().coerceAtLeast(0.0)
+        for (i in 0 until length) {
+            val x = samples[i].toDouble() / 32768.0
+            hpOut = highPassAlpha * (hpOut + x - prevInput)
+            prevInput = x
+            lpStage1 += lowPassAlpha * (hpOut - lpStage1)
+            lpStage2 += lowPassAlpha * (lpStage1 - lpStage2)
+
+            // Smooth per-sample gain slewing prevents audible pumping/clicks during NLP ducking.
+            currentGain += 0.015 * (target - currentGain)
+            val amplified = lpStage2 * currentGain
+            val limited = if (kotlin.math.abs(amplified) > 0.75) {
+                val sign = if (amplified >= 0.0) 1.0 else -1.0
+                val excess = kotlin.math.abs(amplified) - 0.75
+                sign * (0.75 + 0.25 * tanh(excess / 0.25))
+            } else {
+                amplified
+            }
+            samples[i] = (limited * 32767.0)
+                .roundToInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                .toShort()
+        }
+    }
+
+    companion object {
+        const val DEFAULT_SPEECH_GAIN = 3.0f // ~ +9.5 dB before soft-limiter
+        const val ECHO_DUCK_GAIN = 0.15f // ~ -16.5 dB attenuation when far-end speaker active
     }
 }

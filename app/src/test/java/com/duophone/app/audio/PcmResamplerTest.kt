@@ -65,4 +65,46 @@ class PcmResamplerTest {
         assertEquals(-6.02, stats.rmsDbfs, 0.1)
         assertEquals(-6.02, stats.peakDbfs, 0.1)
     }
+
+    @Test
+    fun `voice conditioner filters dc, boosts midband speech without clipping, and ducks echo`() {
+        val conditioner = PcmVoiceConditioner(16_000)
+
+        // DC / very low rumble settles down cleanly after settling
+        val dcWarmup = ShortArray(1200) { 10_000 }
+        conditioner.processInPlace(dcWarmup, targetGain = 1.0f)
+        val tailStats = PcmLevelMeter.measure(dcWarmup.copyOfRange(900, 1200))
+        assertTrue("DC should be attenuated below -24 dBFS, got ${tailStats.rmsDbfs}", tailStats.rmsDbfs < -24.0)
+
+        conditioner.reset()
+        // Quiet 1 kHz speech (~ -30 dBFS) should boost significantly (~ +9 dB)
+        val speech = ShortArray(480) { i ->
+            (1_000.0 * sin(2.0 * PI * 1_000.0 * i / 16_000.0)).toInt().toShort()
+        }
+        val origStats = PcmLevelMeter.measure(speech.copyOfRange(160, 480))
+        val boosted = speech.copyOf()
+        conditioner.processInPlace(boosted, targetGain = PcmVoiceConditioner.DEFAULT_SPEECH_GAIN)
+        val boostedStats = PcmLevelMeter.measure(boosted.copyOfRange(160, 480))
+        assertTrue(
+            "Expected speech gain boost, orig=${origStats.rmsDbfs}, boosted=${boostedStats.rmsDbfs}",
+            boostedStats.rmsDbfs - origStats.rmsDbfs >= 7.5,
+        )
+
+        // Loud signal stays soft-limited within Int16 range
+        val loud = ShortArray(320) { i ->
+            (25_000.0 * sin(2.0 * PI * 1_000.0 * i / 16_000.0)).toInt().toShort()
+        }
+        conditioner.processInPlace(loud, targetGain = PcmVoiceConditioner.DEFAULT_SPEECH_GAIN)
+        assertTrue(loud.all { it in Short.MIN_VALUE..Short.MAX_VALUE })
+
+        // Echo ducking attenuates strongly below boosted level
+        val ducked = speech.copyOf()
+        conditioner.reset()
+        conditioner.processInPlace(ducked, targetGain = PcmVoiceConditioner.ECHO_DUCK_GAIN)
+        val duckedStats = PcmLevelMeter.measure(ducked.copyOfRange(160, 480))
+        assertTrue(
+            "Expected echo ducking attenuation, orig=${origStats.rmsDbfs}, ducked=${duckedStats.rmsDbfs}",
+            duckedStats.rmsDbfs < origStats.rmsDbfs - 8.0,
+        )
+    }
 }

@@ -4,6 +4,11 @@ All notable changes to Duo Phone will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 4 Live Two-Way Voice Breakthrough, Uplink Gain & Echo Suppression (2026-11-24)
+- Verified real-hardware QDC507 `AT+QADBKEY` unlock, `0x2CA3:0x4006` `adb=1, uac=1`, `/tmp/duophone-voice` `.ko` + ACDB VoLTE calibration, Android 16 full-duplex concurrent capture (`not silenced`), and live full-duplex cellular voice call (`downlink` + `uplink`).
+- Added `PcmVoiceConditioner` (`80 Hz` high-pass + two-stage `3400 Hz` low-pass, `+9.5 dB` soft-limited speech gain, slewed speakerphone NLP echo ducking) with unit tests in `PcmResamplerTest` (**40/40 PASS**, **0 Lint errors**).
+- Upgraded `AndroidAudioBridge`: switched UAC uplink `AudioTrack` to `USAGE_ALARM`, switched local mic `AudioRecord` to `VOICE_COMMUNICATION` with `AEC`/`NS`/`AGC`, throttled UI meter emissions to `250ms` (preventing ANR), and bound QDC507 `--voice-route-session` strictly to active calls.
+
 ### Phase 4 Guarded QDC507 Backup, QADBKEY Unlock & ADB/UAC Controls (2026-11-24)
 - Added `Qdc507ConfigManager`, clean-room Unix `$1$` `Md5Crypt` / `QadbKeyDeriver`, and `UsbCfgTuple` preserving original `0x2CA3:0x4006` while supporting IMEI-backed config backup (`files/backups/`), `AT+QADBKEY?` unlock, guarded `adb=1, uac=1` write+readback+`AT+CFUN=1,1`, and one-click original `usbcfg` rollback.
 - Extended `PiiRedactor` to redact `AT+QADBKEY="..."` secrets in logs and added confirmation `AlertDialog` flows in `DiagnosticsView`.

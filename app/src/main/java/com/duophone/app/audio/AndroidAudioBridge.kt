@@ -12,6 +12,7 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.SystemClock
@@ -79,6 +80,12 @@ class AndroidAudioBridge(
 
     @Volatile
     private var mutedFlag: Boolean = false
+
+    @Volatile
+    private var lastDownlinkActiveMs: Long = 0L
+
+    @Volatile
+    private var latestDownlinkRmsDbfs: Double = -96.0
 
     fun checkRecordPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -238,7 +245,7 @@ class AndroidAudioBridge(
 
         val record = try {
             AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 localRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -254,6 +261,7 @@ class AndroidAudioBridge(
 
         var aec: AcousticEchoCanceler? = null
         var ns: NoiseSuppressor? = null
+        var agc: AutomaticGainControl? = null
         if (AcousticEchoCanceler.isAvailable()) {
             aec = runCatching {
                 AcousticEchoCanceler.create(record.audioSessionId)?.apply { enabled = true }
@@ -264,6 +272,16 @@ class AndroidAudioBridge(
                 NoiseSuppressor.create(record.audioSessionId)?.apply { enabled = true }
             }.getOrNull()
         }
+        if (AutomaticGainControl.isAvailable()) {
+            agc = runCatching {
+                AutomaticGainControl.create(record.audioSessionId)?.apply { enabled = true }
+            }.getOrNull()
+        }
+        DuoLogger.i(
+            LogCategory.AUDIO,
+            "uplink_fx",
+            "source=VOICE_COMMUNICATION aec=${aec?.enabled == true} ns=${ns?.enabled == true} agc=${agc?.enabled == true}",
+        )
 
         val minTrackBuf = AudioTrack.getMinBufferSize(
             uacOutRateHz,
@@ -275,7 +293,7 @@ class AndroidAudioBridge(
             AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build(),
                 )
@@ -292,6 +310,7 @@ class AndroidAudioBridge(
         } catch (t: Throwable) {
             aec?.release()
             ns?.release()
+            agc?.release()
             record.release()
             reportLoopError("创建 UAC 上行 AudioTrack 失败: ${t.message}")
             return
@@ -299,6 +318,7 @@ class AndroidAudioBridge(
 
         track.preferredDevice = uacOutDevice
         track.setVolume(AudioTrack.getMaxVolume())
+        val conditioner = PcmVoiceConditioner(localRate)
         val resampler = StatefulLinearResampler(localRate, uacOutRateHz)
         val buffer = ShortArray(frameSamples)
 
@@ -313,31 +333,26 @@ class AndroidAudioBridge(
                 if (read <= 0) continue
 
                 val stats = PcmLevelMeter.measure(buffer, read)
+                val nowMs = SystemClock.elapsedRealtime()
                 if (mutedFlag) {
                     buffer.fill(0, 0, read)
                     zeroChunks = 0
-                } else if (stats.allZero) {
-                    zeroChunks++
                 } else {
-                    zeroChunks = 0
+                    if (stats.allZero) zeroChunks++ else zeroChunks = 0
+                    val speakerEchoRisk = _state.value.isSpeakerOn &&
+                        (nowMs - lastDownlinkActiveMs) <= ECHO_HANGOVER_MS &&
+                        stats.rmsDbfs <= latestDownlinkRmsDbfs + 14.0
+                    val gain = if (speakerEchoRisk) {
+                        PcmVoiceConditioner.ECHO_DUCK_GAIN
+                    } else {
+                        PcmVoiceConditioner.DEFAULT_SPEECH_GAIN
+                    }
+                    conditioner.processInPlace(buffer, read, targetGain = gain)
                 }
 
                 val outSamples = resampler.process(buffer, read)
                 if (outSamples.isNotEmpty()) {
                     track.write(outSamples, 0, outSamples.size)
-                }
-
-                if (frames == 2) {
-                    runCatching {
-                        val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        val curMusic = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                        val minTarget = (maxMusic * 0.7f).toInt()
-                        if (maxMusic > 0 && curMusic < minTarget) {
-                            val targetVol = (maxMusic * 0.85f).toInt().coerceAtLeast(1)
-                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                            DuoLogger.i(LogCategory.AUDIO, "uac_uplink_gain", "Raised STREAM_MUSIC $curMusic -> $targetVol/$maxMusic")
-                        }
-                    }
                 }
 
                 if (frames == 0 || frames % METER_LOG_INTERVAL_FRAMES == 0) {
@@ -352,7 +367,6 @@ class AndroidAudioBridge(
                 }
                 frames++
 
-                val nowMs = SystemClock.elapsedRealtime()
                 if (nowMs - lastUiEmitMs >= UI_METER_THROTTLE_MS) {
                     lastUiEmitMs = nowMs
                     _state.value = _state.value.copy(
@@ -371,6 +385,7 @@ class AndroidAudioBridge(
             runCatching { record.release() }
             runCatching { aec?.release() }
             runCatching { ns?.release() }
+            runCatching { agc?.release() }
             runCatching { track.stop() }
             runCatching { track.release() }
         }
@@ -457,6 +472,10 @@ class AndroidAudioBridge(
 
                 val stats = PcmLevelMeter.measure(buffer, read)
                 zeroChunks = if (stats.allZero) zeroChunks + 1 else 0
+                latestDownlinkRmsDbfs = stats.rmsDbfs
+                if (stats.rmsDbfs > DOWNLINK_ACTIVE_DBFS) {
+                    lastDownlinkActiveMs = SystemClock.elapsedRealtime()
+                }
 
                 val outSamples = resampler.process(buffer, read)
                 if (outSamples.isNotEmpty()) {
@@ -645,6 +664,8 @@ class AndroidAudioBridge(
         private const val ZERO_STREAM_WARN_THRESHOLD = 25
         private const val METER_LOG_INTERVAL_FRAMES = 100
         private const val UI_METER_THROTTLE_MS = 250L
+        private const val ECHO_HANGOVER_MS = 220L
+        private const val DOWNLINK_ACTIVE_DBFS = -54.0
         private val SUPPORTED_USB_RATES = setOf(8_000, 16_000, 44_100, 48_000)
     }
 }
