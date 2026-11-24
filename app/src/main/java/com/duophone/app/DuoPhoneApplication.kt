@@ -1,12 +1,14 @@
 package com.duophone.app
 
 import android.app.Application
+import com.duophone.app.data.CallLogRepository
 import com.duophone.app.data.DuoDatabaseHelper
 import com.duophone.app.data.SmsRepository
 import com.duophone.app.device.AndroidUsbSerialTransport
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.FileAndAndroidLogSink
 import com.duophone.app.diagnostics.LogCategory
+import com.duophone.app.domain.CallController
 import com.duophone.app.domain.ModemController
 import com.duophone.app.domain.SmsServiceController
 import com.duophone.app.service.SmsNotificationHelper
@@ -19,6 +21,9 @@ class DuoPhoneApplication : Application() {
     lateinit var smsRepository: SmsRepository
         private set
 
+    lateinit var callLogRepository: CallLogRepository
+        private set
+
     lateinit var usbTransport: AndroidUsbSerialTransport
         private set
 
@@ -28,12 +33,16 @@ class DuoPhoneApplication : Application() {
     lateinit var smsController: SmsServiceController
         private set
 
+    lateinit var callController: CallController
+        private set
+
     override fun onCreate() {
         super.onCreate()
         DuoLogger.sink = FileAndAndroidLogSink(File(filesDir, "logs/duophone-latest.log"))
         SmsNotificationHelper.ensureChannels(this)
         dbHelper = DuoDatabaseHelper(this)
         smsRepository = SmsRepository(dbHelper)
+        callLogRepository = CallLogRepository(dbHelper)
         usbTransport = AndroidUsbSerialTransport(this)
         modemController = ModemController(
             transport = usbTransport,
@@ -59,6 +68,12 @@ class DuoPhoneApplication : Application() {
             atEngine = modemController.atEngine,
             repository = smsRepository,
             onNewIncomingSms = { sms -> SmsNotificationHelper.showIncomingSms(this, sms) },
+        )
+        callController = CallController(
+            atEngine = modemController.atEngine,
+            callLogStore = callLogRepository,
+            onIncomingCallAlert = { num -> SmsNotificationHelper.showIncomingCall(this, num) },
+            onIncomingCallDismiss = { SmsNotificationHelper.cancelIncomingCall(this) },
         )
         DuoLogger.i(LogCategory.SERVICE, "app_create", "DuoPhoneApplication initialized")
     }

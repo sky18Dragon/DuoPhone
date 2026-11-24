@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
         val app = application as DuoPhoneApplication
         val controller = app.modemController
         val smsController = app.smsController
+        val callController = app.callController
 
         handleNavigationIntent(intent)
         requestNotificationPermissionIfNeeded()
@@ -73,6 +74,8 @@ class MainActivity : ComponentActivity() {
                 val smsThreads = remember(smsMessages) {
                     app.smsRepository.buildThreads(smsMessages)
                 }
+                val callState by callController.state.collectAsStateWithLifecycle()
+                val callLogs by callController.callLogs.collectAsStateWithLifecycle()
 
                 DuoPhoneScreen(
                     selectedTab = selectedTab,
@@ -85,6 +88,8 @@ class MainActivity : ComponentActivity() {
                     isSmsSyncing = isSmsSyncing,
                     smsSyncStatus = smsSyncStatus,
                     selectedSmsAddress = selectedSmsAddress,
+                    callState = callState,
+                    callLogs = callLogs,
                     snackbarHostState = snackbarHostState,
                     onConnect = { lifecycleScope.launch { controller.connect() } },
                     onRefreshTelemetry = {
@@ -133,6 +138,41 @@ class MainActivity : ComponentActivity() {
                     onDeleteSms = { id ->
                         lifecycleScope.launch { smsController.deleteLocalMessage(id) }
                     },
+                    onDial = { number ->
+                        lifecycleScope.launch {
+                            callController.dial(number)?.let { err -> snackbarHostState.showSnackbar(err) }
+                        }
+                    },
+                    onAnswerCall = {
+                        lifecycleScope.launch {
+                            callController.answer()?.let { err -> snackbarHostState.showSnackbar(err) }
+                        }
+                    },
+                    onHangupOrRejectCall = {
+                        lifecycleScope.launch {
+                            callController.hangupOrReject()?.let { err -> snackbarHostState.showSnackbar(err) }
+                        }
+                    },
+                    onSendDtmf = { digit ->
+                        lifecycleScope.launch {
+                            callController.sendDtmf(digit)?.let { err -> snackbarHostState.showSnackbar(err) }
+                        }
+                    },
+                    onToggleCallMute = { callController.toggleMute() },
+                    onToggleCallSpeaker = { callController.toggleSpeaker() },
+                    onSimulateIncomingCall = {
+                        callController.simulateIncomingCall("+8613800138000")
+                        lifecycleScope.launch { snackbarHostState.showSnackbar("已触发模拟来电与系统通知") }
+                    },
+                    onSimulateOutgoingCall = { num ->
+                        callController.simulateOutgoingCall(num)
+                    },
+                    onDeleteCallLog = { id ->
+                        lifecycleScope.launch { callController.deleteCallLog(id) }
+                    },
+                    onClearCallLogs = {
+                        lifecycleScope.launch { callController.clearCallLogs() }
+                    },
                 )
             }
         }
@@ -162,6 +202,11 @@ class MainActivity : ComponentActivity() {
                 DuoLogger.d(LogCategory.INPUT, "gamepad_r1", "Switched tab -> ${selectedTab.name}")
                 true
             }
+            KeyEvent.KEYCODE_BUTTON_START -> {
+                selectedTab = DuoTab.CALL
+                DuoLogger.d(LogCategory.INPUT, "gamepad_start", "Switched tab -> CALL")
+                true
+            }
             KeyEvent.KEYCODE_BUTTON_SELECT -> {
                 selectedTab = DuoTab.SMS
                 DuoLogger.d(LogCategory.INPUT, "gamepad_select", "Switched tab -> SMS")
@@ -172,14 +217,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleNavigationIntent(intent: Intent?) {
-        val openTab = intent?.getStringExtra("open_tab")
-        if (openTab == "SMS") {
-            selectedTab = DuoTab.SMS
-            val addr = intent.getStringExtra("sms_address")
-            if (!addr.isNullOrBlank()) {
-                selectedSmsAddress = addr
-                lifecycleScope.launch {
-                    (application as DuoPhoneApplication).smsController.markThreadRead(addr)
+        when (intent?.getStringExtra("open_tab")) {
+            "CALL" -> selectedTab = DuoTab.CALL
+            "SMS" -> {
+                selectedTab = DuoTab.SMS
+                val addr = intent.getStringExtra("sms_address")
+                if (!addr.isNullOrBlank()) {
+                    selectedSmsAddress = addr
+                    lifecycleScope.launch {
+                        (application as DuoPhoneApplication).smsController.markThreadRead(addr)
+                    }
                 }
             }
         }
