@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Duo Phone</string>
+    <string name="service_channel_name">4G 通信模块服务</string>
+    <string name="service_channel_desc">维持大疆 4G 模块 USB 连接、AT 通道与来电短信监听</string>
+</resources>

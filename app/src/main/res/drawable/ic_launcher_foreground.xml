@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Signal arcs -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M34,42 A24,24 0 0,1 74,42"
+        android:strokeWidth="4.5"
+        android:strokeColor="#38BDF8"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M42,50 A14,14 0 0,1 66,50"
+        android:strokeWidth="4.5"
+        android:strokeColor="#7DD3FC"
+        android:strokeLineCap="round" />
+    <!-- Dual-screen handheld badge -->
+    <path
+        android:fillColor="#22D3EE"
+        android:pathData="M36,56 h36 a6,6 0 0,1 6,6 v14 a6,6 0 0,1 -6,6 h-36 a6,6 0 0,1 -6,-6 v-14 a6,6 0 0,1 6,-6 z" />
+    <path
+        android:fillColor="#0B1020"
+        android:pathData="M42,61 h24 v7 h-24 z" />
+    <path
+        android:fillColor="#0B1020"
+        android:pathData="M47,71 h14 v6 h-14 z" />
+</vector>
