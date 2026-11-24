@@ -49,6 +49,6 @@
 | `UI-002`（双屏横屏拨号布局重构实机验证） | `PASS` | 实机测试主屏与下屏（`Display#2`）横屏拨号按键及右侧 `拨出 (ATD)` 完整可见，顺利发起多通真实拨号与通话中 DTMF 操作 |
 | `CALL-001` ~ `CALL-007`（真实运营商去电、来电、DTMF 与挂断） | `PASS` | `duophone-latest.log` 实机记录：`ATD` 去电成功并正确过滤 `+CLCC` 两条 `mode=1` 数据通道只保留语音通话；通话中发送 `AT+VTS="2/5/9/7/5/3/0"` 全部 `OK`；`ATH` 主动挂断成功；呼入 `RING` + `+CLIP` 号码显示正常 → `ATA` 接听 → 对端挂断 `NO CARRIER` 正常回退空闲 |
 | `CALL-008` ~ `CALL-010`（异常 `+CEER` / 锁屏来电）、`USB-004` ~ `USB-007`、`SMS-005` ~ `SMS-010`、`UI-003` ~ `UI-004` | `NOT_TESTED` | 待补测热插拔 20 次稳定性、锁屏通知细节及失败错误码分支 |
-| `AUDIO-001` ~ `AUDIO-004`（UAC 识别与双向 VoLTE 语音互通 — 独立验收项） | `PASS` *(音质调优中)* | 实机完整打通：`AT+QADBKEY` 解锁与 `usbcfg` 切为 `1,1`（保留 `0x2CA3:0x4006`）→ `/tmp` 加载 `aprv3`/`voice` + ACDB 校准 → `Baiwang` UAC 双向声卡（`8000 Hz`）识别；真实通话实测确认 **Android 16 双路并发采集均 `not silenced`**，下行 `-35.6~-48.8 dBFS` 可清晰听到对端，上行 `-15.8~-33.0 dBFS` 对端可听到（用户反馈偏小声且掌机侧有回音）；已追加 `USAGE_ALARM`、`PcmVoiceConditioner` 增益及硬件+NLP 回声压制待复测 |
-| `AUDIO-005` ~ `AUDIO-010`（30min 稳定性 / 蓝牙有线切换 / 重连恢复） | `NOT_TESTED` | 待上行音量与回声复测通过后继续专项验收 |
+| `AUDIO-001` ~ `AUDIO-004`（UAC 识别与双向 VoLTE 语音互通 — 独立验收项） | `PASS` | `22:08:55` 实机最终复测通过：`AT+QADBKEY` 解锁与 `usbcfg` 切为 `1,1`（保留 `0x2CA3:0x4006`）→ `/tmp/duophone-voice` 加载 `aprv3`/`voice` + ACDB VoLTE 校准 → `Baiwang` UAC 双向声卡（`8000 Hz`）识别；日志实证 `source=VOICE_COMMUNICATION aec=true ns=true agc=true`、`USAGE_ALARM` 上行 + `PcmVoiceConditioner`（`80–3400Hz` 带通 / `+9.5 dB` 软限幅 / 扬声器 NLP 回声衰减），**双路并发采集均 `zero=0` (`not silenced`)**，连续两通真实通话 `PID=1461` 均干净启停（`bridge_stopped` + `voice_route_stopped`）、零 ANR；用户实机确认：“对方听您说话音量明显清晰放大，回音明显减轻” |
+| `AUDIO-005` ~ `AUDIO-010`（30min 稳定性 / 蓝牙有线切换 / 重连恢复） | `NOT_TESTED` | 待 Phase 5/6 专项验收（自动耳机路由、通话音量控制与断线重连后 `/tmp` 运行时自恢复） |
 | `SYS-001` ~ `SYS-008`（后台稳定性与合盖功耗） | `NOT_TESTED` | 待 Phase 5 实测 |

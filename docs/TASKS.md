@@ -40,14 +40,20 @@
 - [x] 实现 `GamepadKeyRouter`（L1/R1、START/SELECT、通话情景感知 A/B/X/Y 按键映射）与 `GamepadKeyRouterTest`
 - [x] 实机无线部署验证双屏（`Display#0` & `Display#2`）重构后的横屏拨号/通话控制（`UI-002` PASS）；`UI-003`~`UI-004` 待补验
 
-## Phase 4：双向语音通话专项 — 🚧 进行中（已获授权，已部署备份/解锁控件与外部运行资源待实机触发测试）
+## Phase 4：双向语音通话专项 — ✅ 已完成（核心双向语音 AUDIO-001~004 实机 PASS；长时/耳机/重连并入 Phase 5/6 验收）
 - [x] 内置直接 USB ADB 客户端（`FF/42/01`：`AdbWireProtocol` / `AndroidUsbAdbClient`）
 - [x] 实现 QDC507 可逆语音运行时编排（`Qdc507VoiceRuntime`：仅读取外部 `filesDir/voice_runtime/` 并强校验 SHA-256，严格仅部署 `/tmp/duophone-voice` 并运行 `alsaucm_test` VoLTE ACDB 校准，停用时核验进程时钟 `SIGTERM` + `/sys/class/android_usb/f_audio/audio_enable=0` + `/run/voc_svr` `T/T/B` 回滚，严禁 `rmmod`）
 - [x] 实现受控配置备份与切换（`Qdc507ConfigManager`：按 IMEI 本地备份、Unix `$1$` MD5-crypt 内存口令派生、空通话检查、保原 `0x2CA3:0x4006` 写入回读、`AlertDialog` 显式确认与一键还原原厂 `usbcfg`）
 - [x] 实现跨帧线性重采样器（`StatefulLinearResampler`）、dBFS/零帧监视器（`PcmLevelMeter`）与 Android UAC 双向音频桥接（`AndroidAudioBridge`，支持 `EARPIECE`/`SPEAKER`/`WIRED_HEADSET`/`BLUETOOTH` 及 Android 16 并发录音零帧告警）
 - [x] 接入 `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` 权限、`CallController` 音频联动回调及【诊断】页 Phase 4 控制面板，并通过 14 项 Phase 4 新增 JVM 单测
-- [x] 实机打通 `AT+QADBKEY` 解锁、`0x2CA3:0x4006` `adb=1, uac=1`、`/tmp` 模块语音路由及 Android 16 全双工 UAC 通话（`AUDIO-001`~`AUDIO-004` 初步连通，下行清晰、上行可控）
-- [ ] 待复测上行音量增强（`USAGE_ALARM` + `PcmVoiceConditioner`）与硬件/NLP 回声消除效果，并完成 `AUDIO-005`~`AUDIO-010` 专项验收
+- [x] 实机打通 `AT+QADBKEY` 解锁、`0x2CA3:0x4006` `adb=1, uac=1`、`/tmp` 模块语音路由及 Android 16 全双工 UAC 通话（`AUDIO-001`~`AUDIO-004` 实机复测 PASS）
+- [x] 实机复测上行音量增强（`USAGE_ALARM` + `PcmVoiceConditioner` +9.5dB 软限幅）与硬件 `AEC`/`NS`/`AGC` + NLP 回声消除效果通过（`22:08:55` 日志 + 用户确认音量清晰放大、回音明显减轻）
 
-## Phase 5–7：后台稳定性 / 产品化完善 / 4G 移动网络 — ⏳ 待开始
-- [ ] 合盖（`hall_switch`）USB 供电实测、8h 待机测试、通讯录、蓝牙耳机切换、ECM 移动网络验证
+## Phase 5–6：后台稳定性与 P1 完整通信终端产品化 — 🚧 进行中
+- [ ] 合盖（`hall_switch`）与熄屏供电/功耗实机诊断、通话 `PARTIAL_WAKE_LOCK` 保活与 AT 心跳保活（`SYS-001`~`SYS-008`）
+- [ ] 来电铃声/振动（排除 UAC 劫持）与游戏友好型悬浮通知快捷键（接听 / 拒接 / 挂断 / 短信直复 / 复制验证码）
+- [ ] 通讯录管理（本地 SQLite + 系统 `READ_CONTACTS` 只读融合）及来电/通话记录/短信全局联系人姓名匹配
+- [ ] 蓝牙 / 3.5mm 有线耳机实时热插拔自动切换、通话音量调节与模块断电重插后 `/tmp` 语音运行时自动恢复（`AUDIO-006`~`AUDIO-010`）
+
+## Phase 7：高级扩展（USB 4G 移动网络 / ECM / APN） — ⏳ 待开始
+- [ ] ECM 移动网络可行性研究、APN 配置与流量统计
