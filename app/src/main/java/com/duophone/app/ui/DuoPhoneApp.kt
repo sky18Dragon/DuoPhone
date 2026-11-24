@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -38,6 +39,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,8 +59,9 @@ import com.duophone.app.audio.AudioBridgeState
 import com.duophone.app.audio.LocalAudioRoute
 import com.duophone.app.data.CallLogRecord
 import com.duophone.app.data.SmsRecord
+import com.duophone.app.device.ModemConfigBackupState
+import com.duophone.app.device.UsbCfgTuple
 import com.duophone.app.device.VoiceRuntimeSnapshot
-import com.duophone.app.device.VoiceRuntimeStage
 import com.duophone.app.data.SmsThreadSummary
 import com.duophone.app.diagnostics.HostHardwareSnapshot
 import com.duophone.app.diagnostics.LogCategory
@@ -137,6 +140,10 @@ fun DuoPhoneScreen(
     onToggleVoiceRoute: () -> Unit = {},
     onToggleAudioBridge: () -> Unit = {},
     onSelectAudioRoute: (LocalAudioRoute) -> Unit = {},
+    configBackupState: ModemConfigBackupState = ModemConfigBackupState(),
+    onBackupModemConfig: () -> Unit = {},
+    onEnableAdbUac: () -> Unit = {},
+    onRestoreOriginalUsbCfg: () -> Unit = {},
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -280,8 +287,11 @@ fun DuoPhoneScreen(
                 DuoTab.DIAGNOSTICS -> DiagnosticsView(
                     hostHardware = hostHardware,
                     logs = logs,
+                    currentUsbCfgRaw = modemState.usbConfig.usbcfgRaw,
+                    modemReady = modemState.activeAtInterfaceId >= 0,
                     voiceState = voiceState,
                     audioState = audioState,
+                    configBackupState = configBackupState,
                     onRefreshHostHardware = onRefreshHostHardware,
                     onClearLogs = onClearLogs,
                     onProbeVoiceRuntime = onProbeVoiceRuntime,
@@ -289,6 +299,9 @@ fun DuoPhoneScreen(
                     onToggleVoiceRoute = onToggleVoiceRoute,
                     onToggleAudioBridge = onToggleAudioBridge,
                     onSelectAudioRoute = onSelectAudioRoute,
+                    onBackupModemConfig = onBackupModemConfig,
+                    onEnableAdbUac = onEnableAdbUac,
+                    onRestoreOriginalUsbCfg = onRestoreOriginalUsbCfg,
                 )
             }
         }
@@ -515,8 +528,11 @@ private fun AtConsoleView(
 private fun DiagnosticsView(
     hostHardware: HostHardwareSnapshot,
     logs: List<LogEntry>,
+    currentUsbCfgRaw: String,
+    modemReady: Boolean,
     voiceState: VoiceRuntimeSnapshot,
     audioState: AudioBridgeState,
+    configBackupState: ModemConfigBackupState,
     onRefreshHostHardware: () -> Unit,
     onClearLogs: () -> Unit,
     onProbeVoiceRuntime: () -> Unit,
@@ -524,10 +540,85 @@ private fun DiagnosticsView(
     onToggleVoiceRoute: () -> Unit,
     onToggleAudioBridge: () -> Unit,
     onSelectAudioRoute: (LocalAudioRoute) -> Unit,
+    onBackupModemConfig: () -> Unit,
+    onEnableAdbUac: () -> Unit,
+    onRestoreOriginalUsbCfg: () -> Unit,
 ) {
     var selectedCategory by remember { mutableStateOf<LogCategory?>(null) }
+    var showEnableAdbUacDialog by remember { mutableStateOf(false) }
+    var showRestoreUsbCfgDialog by remember { mutableStateOf(false) }
     val filteredLogs = remember(logs, selectedCategory) {
         if (selectedCategory == null) logs else logs.filter { it.category == selectedCategory }
+    }
+    val liveTuple = remember(currentUsbCfgRaw, configBackupState.currentUsbCfg) {
+        UsbCfgTuple.parse(currentUsbCfgRaw) ?: configBackupState.currentUsbCfg
+    }
+    val proposedWriteCmd = liveTuple?.withAdbAndUac(adbEnabled = true, uacEnabled = true)?.toWriteCommand()
+        ?: "AT+QCFG=\"usbcfg\",0x2CA3,0x4006,1,1,1,1,1,1,1"
+
+    if (showEnableAdbUacDialog) {
+        AlertDialog(
+            onDismissRequest = { showEnableAdbUacDialog = false },
+            title = { Text("确认开启 QDC507 ADB 与 UAC", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = buildString {
+                        appendLine("将执行以下受控步骤：")
+                        appendLine("1. 校验按 IMEI 保存的原始配置备份与空语音通话状态；")
+                        appendLine("2. 若当前 adb=0，则查询 AT+QADBKEY? 在本机内存派生解锁口令完成持久 ADB 授权（口令不记录、不上传）；")
+                        appendLine("3. 写入保留原厂 VID:PID 的组合命令：")
+                        appendLine(proposedWriteCmd)
+                        appendLine("4. 回读确认后下发 AT+CFUN=1,1 重启模块（将短时断网约 10~15 秒，请重新允许 USB 权限）。")
+                        append("注意：配置备份可还原 USB 接口开关，但 AT+QADBKEY 授权为持久状态。")
+                    },
+                    fontSize = 12.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showEnableAdbUacDialog = false
+                        onEnableAdbUac()
+                    },
+                ) {
+                    Text("确认执行", color = DuoAmber, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEnableAdbUacDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showRestoreUsbCfgDialog) {
+        val restoreCmd = configBackupState.backup?.usbCfg?.toWriteCommand() ?: "（无匹配备份）"
+        AlertDialog(
+            onDismissRequest = { showRestoreUsbCfgDialog = false },
+            title = { Text("确认还原原厂 USB 组合", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "将按当前 IMEI 匹配本地备份并写入：\n$restoreCmd\n随后下发 AT+CFUN=1,1 重启模块生效。\n注：AT+QADBKEY 持久解锁状态不会被本操作撤销。",
+                    fontSize = 12.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreUsbCfgDialog = false
+                        onRestoreOriginalUsbCfg()
+                    },
+                ) {
+                    Text("确认还原", color = DuoRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreUsbCfgDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 
     LazyColumn(
@@ -565,6 +656,14 @@ private fun DiagnosticsView(
 
         item {
             SectionCard(title = "Phase 4 语音运行时与 UAC 音频桥接 (${voiceState.stage.name})") {
+                KeyValueRow(
+                    "IMEI 配置备份",
+                    configBackupState.backup?.let { "已备份 (${it.usbCfg.summaryTuple()})" } ?: "未备份（写入 usbcfg 前必选）",
+                )
+                KeyValueRow(
+                    "实时 usbcfg",
+                    liveTuple?.summaryTuple() ?: currentUsbCfgRaw.ifBlank { "未读取" },
+                )
                 KeyValueRow("模块侧 ADB / UAC", "ADB=${voiceState.adbDetected} · UAC(USB描述)=${voiceState.uacDetected}")
                 KeyValueRow("模块内核与驱动", "${voiceState.kernelVersion.ifBlank { "未探测" }} · apr=${voiceState.aprLoaded} voice=${voiceState.voiceLoaded}")
                 KeyValueRow("ALSA /dev/snd", voiceState.pcmDevices.joinToString(", ").ifBlank { "—" })
@@ -593,21 +692,43 @@ private fun DiagnosticsView(
                     }
                     KeyValueRow("外部资源 ${asset.spec.fileName}", statusText)
                 }
-                val combinedErr = voiceState.lastError ?: audioState.lastError
+                val combinedErr = configBackupState.lastError ?: voiceState.lastError ?: audioState.lastError
                 if (!combinedErr.isNullOrBlank()) {
                     Text(text = combinedErr, color = DuoRed, fontSize = 11.sp)
                 } else {
-                    Text(text = "${voiceState.lastSummary} | ${audioState.lastSummary}", color = DuoTextSecondary, fontSize = 11.sp)
+                    Text(
+                        text = "${configBackupState.lastStatus} | ${voiceState.lastSummary} | ${audioState.lastSummary}",
+                        color = DuoTextSecondary,
+                        fontSize = 11.sp,
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    OutlinedButton(onClick = onProbeVoiceRuntime) { Text("只读探测", fontSize = 11.sp) }
-                    OutlinedButton(onClick = onPrepareVoiceRuntime) { Text("部署 /tmp 运行时", fontSize = 11.sp) }
+                    OutlinedButton(
+                        onClick = onBackupModemConfig,
+                        enabled = modemReady && !configBackupState.isBusy,
+                    ) { Text("1.备份配置", fontSize = 11.sp) }
+                    OutlinedButton(
+                        onClick = { showEnableAdbUacDialog = true },
+                        enabled = modemReady && !configBackupState.isBusy && configBackupState.backup != null,
+                    ) { Text("2.开启 ADB+UAC", fontSize = 11.sp, color = DuoAmber) }
+                    OutlinedButton(
+                        onClick = { showRestoreUsbCfgDialog = true },
+                        enabled = modemReady && !configBackupState.isBusy && configBackupState.backup != null,
+                    ) { Text("还原原厂 USB", fontSize = 11.sp) }
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(onClick = onProbeVoiceRuntime) { Text("3.只读探测", fontSize = 11.sp) }
+                    OutlinedButton(onClick = onPrepareVoiceRuntime) { Text("4.部署 /tmp 运行时", fontSize = 11.sp) }
                     OutlinedButton(onClick = onToggleVoiceRoute) {
-                        Text(if (voiceState.bridgePid != null) "停止模块路由" else "启动模块路由", fontSize = 11.sp)
+                        Text(if (voiceState.bridgePid != null) "停止模块路由" else "5.启动模块路由", fontSize = 11.sp)
                     }
                     Button(
                         onClick = onToggleAudioBridge,
@@ -615,7 +736,7 @@ private fun DiagnosticsView(
                             containerColor = if (audioState.isRunning) DuoRed else DuoAccent,
                         ),
                     ) {
-                        Text(if (audioState.isRunning) "停止 UAC 桥接" else "启动 UAC 桥接", fontSize = 11.sp)
+                        Text(if (audioState.isRunning) "停止 UAC 桥接" else "6.启动 UAC 桥接", fontSize = 11.sp)
                     }
                 }
                 Spacer(Modifier.height(4.dp))

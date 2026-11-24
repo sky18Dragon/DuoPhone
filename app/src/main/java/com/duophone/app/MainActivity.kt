@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
         val callController = app.callController
         val voiceRuntime = app.voiceRuntime
         val audioBridge = app.audioBridge
+        val configManager = app.configManager
 
         handleNavigationIntent(intent)
         requestNotificationPermissionIfNeeded()
@@ -100,6 +101,7 @@ class MainActivity : ComponentActivity() {
                 val callLogs by callController.callLogs.collectAsStateWithLifecycle()
                 val voiceState by voiceRuntime.state.collectAsStateWithLifecycle()
                 val audioState by audioBridge.state.collectAsStateWithLifecycle()
+                val configBackupState by configManager.state.collectAsStateWithLifecycle()
                 val hw = hardwareState ?: hostHardware
                 val secondaryDisplayId = remember(hw) {
                     DualDisplayHelper.selectSecondaryDisplayId(
@@ -257,6 +259,35 @@ class MainActivity : ComponentActivity() {
                     },
                     onSelectAudioRoute = { route ->
                         audioBridge.applyLocalAudioRoute(route)
+                    },
+                    configBackupState = configBackupState,
+                    onBackupModemConfig = {
+                        lifecycleScope.launch {
+                            configManager.backupCurrentConfig().fold(
+                                onSuccess = { rec ->
+                                    snackbarHostState.showSnackbar("配置备份完成: ${rec.usbCfg.summaryTuple()}")
+                                },
+                                onFailure = { err ->
+                                    snackbarHostState.showSnackbar(err.message ?: "配置备份失败")
+                                },
+                            )
+                        }
+                    },
+                    onEnableAdbUac = {
+                        lifecycleScope.launch {
+                            configManager.enableAdbAndUacWithReboot().fold(
+                                onSuccess = { msg -> snackbarHostState.showSnackbar(msg) },
+                                onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "开启 ADB+UAC 失败") },
+                            )
+                        }
+                    },
+                    onRestoreOriginalUsbCfg = {
+                        lifecycleScope.launch {
+                            configManager.restoreOriginalUsbCfgWithReboot().fold(
+                                onSuccess = { msg -> snackbarHostState.showSnackbar(msg) },
+                                onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "还原原厂 USB 失败") },
+                            )
+                        }
                     },
                 )
             }

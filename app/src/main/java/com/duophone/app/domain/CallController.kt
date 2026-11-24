@@ -430,12 +430,19 @@ class CallController(
                                 finalizeCallRecord(forcedOutcome = outcome, reason = "通话结束")
                             }
                         } else {
-                            val mappedPhase = when (primary.status) {
+                            val rawPhase = when (primary.status) {
                                 ClccCallStatus.ACTIVE, ClccCallStatus.HELD -> CallUiPhase.ACTIVE
                                 ClccCallStatus.DIALING -> CallUiPhase.DIALING
                                 ClccCallStatus.ALERTING -> CallUiPhase.ALERTING
                                 ClccCallStatus.INCOMING, ClccCallStatus.WAITING -> CallUiPhase.INCOMING
                                 ClccCallStatus.DISCONNECTED -> CallUiPhase.ENDING
+                            }
+                            // Once a call has connected (e.g. immediately after ATA OK), never regress
+                            // backward on a stale in-flight +CLCC sample until DISCONNECTED/empty.
+                            val mappedPhase = if (cur.connectedAtMs > 0L && rawPhase != CallUiPhase.ENDING) {
+                                CallUiPhase.ACTIVE
+                            } else {
+                                rawPhase
                             }
                             val connectedAt = if (mappedPhase == CallUiPhase.ACTIVE && cur.connectedAtMs == 0L) {
                                 System.currentTimeMillis()

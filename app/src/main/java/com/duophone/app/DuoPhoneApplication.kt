@@ -7,6 +7,7 @@ import com.duophone.app.data.DuoDatabaseHelper
 import com.duophone.app.data.SmsRepository
 import com.duophone.app.device.AndroidUsbAdbClient
 import com.duophone.app.device.AndroidUsbSerialTransport
+import com.duophone.app.device.Qdc507ConfigManager
 import com.duophone.app.device.Qdc507VoiceRuntime
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.FileAndAndroidLogSink
@@ -46,6 +47,9 @@ class DuoPhoneApplication : Application() {
         private set
 
     lateinit var callController: CallController
+        private set
+
+    lateinit var configManager: Qdc507ConfigManager
         private set
 
     override fun onCreate() {
@@ -94,6 +98,8 @@ class DuoPhoneApplication : Application() {
             onSpeakerChanged = { speaker -> audioBridge.setSpeakerEnabled(speaker) },
             onRealCallEnded = { audioBridge.stop() },
         )
+        val backupDir = File(filesDir, "backups").apply { mkdirs() }
+        configManager = Qdc507ConfigManager(modemController.atEngine, backupDir)
         DuoLogger.i(LogCategory.SERVICE, "app_create", "DuoPhoneApplication initialized")
     }
 }

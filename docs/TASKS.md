@@ -40,12 +40,13 @@
 - [x] 实现 `GamepadKeyRouter`（L1/R1、START/SELECT、通话情景感知 A/B/X/Y 按键映射）与 `GamepadKeyRouterTest`
 - [x] 实机无线部署验证双屏（`Display#0` & `Display#2`）重构后的横屏拨号/通话控制（`UI-002` PASS）；`UI-003`~`UI-004` 待补验
 
-## Phase 4：双向语音通话专项 — 🚧 代码与单测完成，等待用户确认开启模块 `adb=1, uac=1` 后实机联调
+## Phase 4：双向语音通话专项 — 🚧 进行中（已获授权，已部署备份/解锁控件与外部运行资源待实机触发测试）
 - [x] 内置直接 USB ADB 客户端（`FF/42/01`：`AdbWireProtocol` / `AndroidUsbAdbClient`）
 - [x] 实现 QDC507 可逆语音运行时编排（`Qdc507VoiceRuntime`：仅读取外部 `filesDir/voice_runtime/` 并强校验 SHA-256，严格仅部署 `/tmp/duophone-voice` 并运行 `alsaucm_test` VoLTE ACDB 校准，停用时核验进程时钟 `SIGTERM` + `/sys/class/android_usb/f_audio/audio_enable=0` + `/run/voc_svr` `T/T/B` 回滚，严禁 `rmmod`）
+- [x] 实现受控配置备份与切换（`Qdc507ConfigManager`：按 IMEI 本地备份、Unix `$1$` MD5-crypt 内存口令派生、空通话检查、保原 `0x2CA3:0x4006` 写入回读、`AlertDialog` 显式确认与一键还原原厂 `usbcfg`）
 - [x] 实现跨帧线性重采样器（`StatefulLinearResampler`）、dBFS/零帧监视器（`PcmLevelMeter`）与 Android UAC 双向音频桥接（`AndroidAudioBridge`，支持 `EARPIECE`/`SPEAKER`/`WIRED_HEADSET`/`BLUETOOTH` 及 Android 16 并发录音零帧告警）
-- [x] 接入 `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` 权限、`CallController` 音频联动回调及【诊断】页 Phase 4 控制面板，并通过 10 项 Phase 4 新增 JVM 单测
-- [ ] `BLOCKED`（待用户授权）：实机 `usbcfg` 当前为 `0x2CA3,0x4006,1,1,1,1,1,0,0`（`adb=0, uac=0`），需先按 IMEI 备份并经确认后开启 `adb=1, uac=1`，再侧载外部 `voice_runtime` 文件实测 `AUDIO-001`~`AUDIO-010`
+- [x] 接入 `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` 权限、`CallController` 音频联动回调及【诊断】页 Phase 4 控制面板，并通过 13 项 Phase 4 新增 JVM 单测
+- [ ] 待在掌机端执行 `1.备份配置 → 2.开启 ADB+UAC → 3.只读探测 → 4.部署 /tmp 运行时 → 5.启动模块路由 → 6.启动 UAC 桥接`，并开展真实通话双向语音验收（`AUDIO-001`~`AUDIO-010`）
 
 ## Phase 5–7：后台稳定性 / 产品化完善 / 4G 移动网络 — ⏳ 待开始
 - [ ] 合盖（`hall_switch`）USB 供电实测、8h 待机测试、通讯录、蓝牙耳机切换、ECM 移动网络验证

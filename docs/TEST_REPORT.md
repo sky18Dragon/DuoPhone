@@ -6,11 +6,11 @@
 
 | 项目 | 命令 | 状态 | 实际结果 |
 | --- | --- | --- | --- |
-| Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (`9,460,573` bytes / 9.02 MiB，含双屏拨号布局修复与 Phase 4 运行时) |
-| JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **36 / 36 全部通过**（12 个测试套件，0 失败，0 跳过） |
+| Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (`9,472,330` bytes / 9.03 MiB，含 Phase 4 备份/解锁/ADB+UAC 控制) |
+| JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **39 / 39 全部通过**（13 个测试套件，0 失败，0 跳过） |
 | Android Lint 静态检查 | `./gradlew lintDebug` | `PASS` | **0 Error**（退出码 0；已覆盖 API 26/31 音频路由与 `RECORD_AUDIO` 权限检查） |
 
-### 单元测试覆盖明细（模拟测试，36 / 36 PASS）
+### 单元测试覆盖明细（模拟测试，39 / 39 PASS）
 1. `UsbInterfaceClassifierTest`（2 项）：`2CA3:4006` / `2C7C:0125` 匹配；严格排除 ADB (`FF/42/01`)、UAC (`01`)、CDC (`02`/`0A`)、存储 (`08`)、Diag (`IF0`)，并按 `IF2 → IF3 → IF1` 排序。
 2. `PiiRedactorTest`（1 项）：手机号、IMEI、`ATD` 拨号串、短信验证码自动脱敏。
 3. `AtProtocolParsersTest`（4 项）：非幂等指令禁止重试守卫（`ATD`/`AT+CMGS`/`AT+VTS`/`AT+CFUN=1,1`/`AT+QCFG` 写）；USB 拆包行帧器与短信 `>` 提示符检测；URC 与在途查询响应分流；`+CSQ`/`+COPS?`(含 UCS2 运营商解码)/`+CPIN?`/`+CEREG?`/`+QCFG` 解析。
@@ -23,6 +23,7 @@
 10. `AdbWireProtocolTest`（3 项）：ADB USB 24B 小端包头/校验和/魔数反码编解码与损坏包拦截、`sh -c` 退出码封装解析、`sync:` `SEND`/`DATA`/`DONE`/`OKAY`/`FAIL` 传输帧。
 11. `Qdc507VoiceRuntimeTest`（3 项）：缺失或 SHA-256 不匹配外部资源拦截（`ASSETS_MISSING`，不发送任何推包/加载指令）、只读环境探测（内核/`aprv3`/`voice`/`/dev/snd`/跨括号 `/proc/<pid>/stat` 启动时间戳）、以及安全停机回滚（带进程启动时钟核验的 `SIGTERM` + `/run/voc_svr` `T/T/B`，严禁 `rmmod`）。
 12. `PcmResamplerTest`（4 项）：`8kHz → 48kHz` 跨帧状态线性上采样连续性、`48kHz → 8kHz` 下采样频域/幅度保持、同采样率直通与 `S16_LE` 编解码往返、`PcmLevelMeter` dBFS 与全零静音识别。
+13. `Qdc507ConfigManagerTest`（3 项）：`$1$` MD5-crypt 向量（`$1$12345678$0jXKXQwSwMxYoegx0S.I.1`）与 15 字符 `QADBKEY` 派生、`UsbCfgTuple` 原厂 VID/PID 保留与 `AT+QADBKEY` 日志脱敏、无备份或通话中拦截与受控写入/回读/还原流程。
 
 ---
 

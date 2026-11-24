@@ -56,11 +56,13 @@ object PiiRedactor {
         RegexOption.IGNORE_CASE,
     )
     private val dialCommand = Regex("""(ATD)([+\d*#,]+)(;?)""", RegexOption.IGNORE_CASE)
+    private val qadbKeyCommand = Regex("""(AT\+QADBKEY=)"([^"]+)"""", RegexOption.IGNORE_CASE)
     private val quotedPhone = Regex("""("\+?\d{5,16}")""")
 
     fun redact(raw: String): String {
         if (raw.isBlank()) return raw
         var out = raw
+        out = qadbKeyCommand.replace(out) { m -> "${m.groupValues[1]}\"[REDACTED]\"" }
         out = dialCommand.replace(out) { m ->
             "${m.groupValues[1]}${maskDigits(m.groupValues[2])}${m.groupValues[3]}"
         }

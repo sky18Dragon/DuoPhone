@@ -4,6 +4,11 @@ All notable changes to Duo Phone will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 4 Guarded QDC507 Backup, QADBKEY Unlock & ADB/UAC Controls (2026-11-24)
+- Added `Qdc507ConfigManager`, clean-room Unix `$1$` `Md5Crypt` / `QadbKeyDeriver`, and `UsbCfgTuple` preserving original `0x2CA3:0x4006` while supporting IMEI-backed config backup (`files/backups/`), `AT+QADBKEY?` unlock, guarded `adb=1, uac=1` write+readback+`AT+CFUN=1,1`, and one-click original `usbcfg` rollback.
+- Extended `PiiRedactor` to redact `AT+QADBKEY="..."` secrets in logs and added confirmation `AlertDialog` flows in `DiagnosticsView`.
+- Fixed stale in-flight `+CLCC` poll regression immediately after `ATA` answer in `CallController.kt` and added `Qdc507ConfigManagerTest` (full suite **39/39 PASS**, **0 Lint errors**).
+
 ### Dual-Screen Landscape Dialpad & Header Layout Fix (2026-11-24)
 - Redesigned `CompactLandscapeDialer` and `CompactDtmfGrid` in `CallScreen.kt`, shared across `CallTabScreen` and `SecondaryDeckScreen.kt`: replaced the tall `OutlinedTextField` + fixed-height vertical stack with a `40dp` bordered `BasicTextField` bar, height-weighted 4x3 keypad rows, and a right-hand action column (`+号`/`退格`, `清空`, and prominent green `拨出 (ATD)`), eliminating bottom clipping on Retroid Pocket Duo `Display #0` and `Display #2`.
 - Switched active-call DTMF + control actions on both screens to a side-by-side layout and compacted headers/tab bars (`DuoPhoneApp.kt`, `SecondaryDeckScreen.kt`) with `navigationBarsPadding()` so top-right `重连` and bottom dial controls remain unclipped.
