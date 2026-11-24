@@ -20,8 +20,10 @@ import com.duophone.app.R
 import com.duophone.app.device.AndroidUsbSerialTransport
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.LogCategory
+import com.duophone.app.domain.ModemConnectionState
 import com.duophone.app.domain.ModemController
 import com.duophone.app.domain.ModemUiState
+import com.duophone.app.domain.SmsServiceController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,6 +57,8 @@ class ModemService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var controller: ModemController
+    private lateinit var smsController: SmsServiceController
+    private var lastConnectionState: ModemConnectionState = ModemConnectionState.DISCONNECTED
     private var receiversRegistered = false
 
     private val usbSystemReceiver = object : BroadcastReceiver() {
@@ -79,6 +83,7 @@ class ModemService : Service() {
         super.onCreate()
         val app = application as DuoPhoneApplication
         controller = app.modemController
+        smsController = app.smsController
 
         createNotificationChannel()
         promoteToForeground(controller.state.value)
@@ -87,6 +92,15 @@ class ModemService : Service() {
         serviceScope.launch {
             controller.state.collect { state ->
                 updateNotification(state)
+                if (state.connectionState != lastConnectionState) {
+                    val prev = lastConnectionState
+                    lastConnectionState = state.connectionState
+                    if (state.connectionState == ModemConnectionState.READY && prev != ModemConnectionState.READY) {
+                        serviceScope.launch(Dispatchers.IO) { smsController.syncFromModem(notifyNew = false) }
+                    } else if (state.connectionState == ModemConnectionState.DISCONNECTED) {
+                        smsController.onModemDisconnected()
+                    }
+                }
             }
         }
         DuoLogger.i(LogCategory.SERVICE, "service_create", "ModemService started")

@@ -1,23 +1,39 @@
 package com.duophone.app
 
 import android.app.Application
+import com.duophone.app.data.DuoDatabaseHelper
+import com.duophone.app.data.SmsRepository
 import com.duophone.app.device.AndroidUsbSerialTransport
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.FileAndAndroidLogSink
 import com.duophone.app.diagnostics.LogCategory
 import com.duophone.app.domain.ModemController
+import com.duophone.app.domain.SmsServiceController
+import com.duophone.app.service.SmsNotificationHelper
 import java.io.File
 
 class DuoPhoneApplication : Application() {
+    lateinit var dbHelper: DuoDatabaseHelper
+        private set
+
+    lateinit var smsRepository: SmsRepository
+        private set
+
     lateinit var usbTransport: AndroidUsbSerialTransport
         private set
 
     lateinit var modemController: ModemController
         private set
 
+    lateinit var smsController: SmsServiceController
+        private set
+
     override fun onCreate() {
         super.onCreate()
         DuoLogger.sink = FileAndAndroidLogSink(File(filesDir, "logs/duophone-latest.log"))
+        SmsNotificationHelper.ensureChannels(this)
+        dbHelper = DuoDatabaseHelper(this)
+        smsRepository = SmsRepository(dbHelper)
         usbTransport = AndroidUsbSerialTransport(this)
         modemController = ModemController(
             transport = usbTransport,
@@ -38,6 +54,11 @@ class DuoPhoneApplication : Application() {
                 val dev = usbTransport.findSupportedDevice()
                 dev != null && usbTransport.hasPermission(dev)
             },
+        )
+        smsController = SmsServiceController(
+            atEngine = modemController.atEngine,
+            repository = smsRepository,
+            onNewIncomingSms = { sms -> SmsNotificationHelper.showIncomingSms(this, sms) },
         )
         DuoLogger.i(LogCategory.SERVICE, "app_create", "DuoPhoneApplication initialized")
     }
