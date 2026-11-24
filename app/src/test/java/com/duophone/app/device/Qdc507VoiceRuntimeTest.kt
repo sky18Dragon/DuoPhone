@@ -124,7 +124,8 @@ class Qdc507VoiceRuntimeTest {
         val stopCmd = fakeAdb.commands.single()
         assertTrue(stopCmd.contains("777111"))
         assertTrue(stopCmd.contains("kill -TERM 5120"))
-        assertTrue(stopCmd.contains("/run/voc_svr"))
+        assertTrue(stopCmd.contains("/sys/class/android_usb/f_audio/audio_enable"))
+        assertTrue(stopCmd.contains("-p /run/voc_svr"))
         assertFalse("Must never rmmod kernel modules", stopCmd.contains("rmmod"))
     }
 

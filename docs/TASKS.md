@@ -29,23 +29,23 @@
 - [x] 实现短信会话/详情/快捷回复 Compose UI（含无硬件本地 `[SIMULATED]` 验证入口）与单元测试（`SmsPduCodecTest`、`SmsServiceControllerTest`）
 - [x] 用户直连 QDC507 与真实 SIM 卡实测：收发短信成功（`SMS-001`~`SMS-004` PASS）；`SMS-005`~`SMS-010` 长短信/验证码边界项待补验
 
-## Phase 3：电话呼叫控制 — ✅ 代码、单元测试与 APK 安装完成（真机呼叫待测）
+## Phase 3：电话呼叫控制 — ✅ 代码、单测与真实运营商呼叫控制核心实测 PASS
 - [x] 实现呼叫 AT/URC 解析（`CallAtParser`：`ATD`/`ATA`/`ATH`/`AT+CLCC`/`AT+CLIP`/`AT+CEER`/`AT+VTS`）
 - [x] 实现呼叫状态机与通话记录 SQLite 持久化（`CallController` / `CallLogRepository`），严格禁止 `ATD` 自动重试
 - [x] 实现拨号键盘、通话控制面板、来电通知与通话记录 UI（`CallScreen`）及单元测试（`CallAtParserTest`、`CallControllerTest`）
-- [ ] 待使用当前已连接 QDC507 与授权测试号码完成 `CALL-001` ~ `CALL-010` 实机呼叫控制验收
+- [x] 实机通过 QDC507 完成 `CALL-001`~`CALL-007`（去电 `ATD`、`+CLCC` 过滤数据业务、通话中 `AT+VTS` DTMF、`ATH` 挂断、`RING`+`+CLIP` 来电显示、`ATA` 接听、对端 `NO CARRIER` 恢复）；`CALL-008`~`CALL-010` 异常/锁屏细节待补验
 
-## 双屏 UI 与手柄控制（Phase 6 前置基础） — ✅ 代码、单测与双屏拉起完成（手柄通话交互待测）
+## 双屏 UI 与手柄控制（Phase 6 前置基础） — ✅ 代码、单测与双屏拨号/通话面板实机完成
 - [x] 实现 `DualDisplayHelper`、`SecondaryDeckActivity`（`Display Id != 0` 下屏拨号/通话/快捷短信/AT 控制台）与完整单屏降级
 - [x] 实现 `GamepadKeyRouter`（L1/R1、START/SELECT、通话情景感知 A/B/X/Y 按键映射）与 `GamepadKeyRouterTest`
-- [x] 完成 `19:46` APK 安装，`MainActivity` 与 `Display Id=2` 双屏同时点亮；待补测 `UI-002`~`UI-004` 手柄通话交互
+- [x] 实机无线部署验证双屏（`Display#0` & `Display#2`）重构后的横屏拨号/通话控制（`UI-002` PASS）；`UI-003`~`UI-004` 待补验
 
-## Phase 4：双向语音通话专项 — ✅ 代码与单测完成（实机部署与硬件语音验收待测）
+## Phase 4：双向语音通话专项 — 🚧 代码与单测完成，等待用户确认开启模块 `adb=1, uac=1` 后实机联调
 - [x] 内置直接 USB ADB 客户端（`FF/42/01`：`AdbWireProtocol` / `AndroidUsbAdbClient`）
-- [x] 实现 QDC507 可逆语音运行时编排（`Qdc507VoiceRuntime`：仅读取外部 `filesDir/voice_runtime/` 并强校验 SHA-256，严格仅部署 `/tmp/duophone-voice`，停用时用启动时间戳核验 `SIGTERM` + `voc_svr` 回滚且严禁 `rmmod`）
+- [x] 实现 QDC507 可逆语音运行时编排（`Qdc507VoiceRuntime`：仅读取外部 `filesDir/voice_runtime/` 并强校验 SHA-256，严格仅部署 `/tmp/duophone-voice` 并运行 `alsaucm_test` VoLTE ACDB 校准，停用时核验进程时钟 `SIGTERM` + `/sys/class/android_usb/f_audio/audio_enable=0` + `/run/voc_svr` `T/T/B` 回滚，严禁 `rmmod`）
 - [x] 实现跨帧线性重采样器（`StatefulLinearResampler`）、dBFS/零帧监视器（`PcmLevelMeter`）与 Android UAC 双向音频桥接（`AndroidAudioBridge`，支持 `EARPIECE`/`SPEAKER`/`WIRED_HEADSET`/`BLUETOOTH` 及 Android 16 并发录音零帧告警）
 - [x] 接入 `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` 权限、`CallController` 音频联动回调及【诊断】页 Phase 4 控制面板，并通过 10 项 Phase 4 新增 JVM 单测
-- [ ] 待部署新版 APK 至 Retroid Pocket Duo 并开展 QDC507 UAC1 双向语音真机验收（`AUDIO-001`~`AUDIO-010`）
+- [ ] `BLOCKED`（待用户授权）：实机 `usbcfg` 当前为 `0x2CA3,0x4006,1,1,1,1,1,0,0`（`adb=0, uac=0`），需先按 IMEI 备份并经确认后开启 `adb=1, uac=1`，再侧载外部 `voice_runtime` 文件实测 `AUDIO-001`~`AUDIO-010`
 
 ## Phase 5–7：后台稳定性 / 产品化完善 / 4G 移动网络 — ⏳ 待开始
 - [ ] 合盖（`hall_switch`）USB 供电实测、8h 待机测试、通讯录、蓝牙耳机切换、ECM 移动网络验证

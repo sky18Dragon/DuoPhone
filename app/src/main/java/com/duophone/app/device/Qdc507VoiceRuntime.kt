@@ -317,19 +317,41 @@ class Qdc507VoiceRuntime(
             }
 
             // Reversible /tmp-only load: never writes boot/MTD/NV and never runs rmmod on cleanup.
+            val dir = Qdc507VoiceAssets.REMOTE_TMP_DIR
             val initScript = buildString {
                 append("set -e; ")
                 append("if ! grep -q '^qdc507_aprv3 ' /proc/modules; then ")
-                append("insmod ${Qdc507VoiceAssets.REMOTE_TMP_DIR}/${Qdc507VoiceAssets.APR_KO.fileName}; ")
+                append("insmod $dir/${Qdc507VoiceAssets.APR_KO.fileName}; ")
                 append("fi; ")
                 append("if ! grep -q '^qdc507_voice ' /proc/modules; then ")
-                append("insmod ${Qdc507VoiceAssets.REMOTE_TMP_DIR}/${Qdc507VoiceAssets.VOICE_KO.fileName}; ")
+                append("insmod $dir/${Qdc507VoiceAssets.VOICE_KO.fileName}; ")
                 append("fi; ")
-                append("chmod 0755 ${Qdc507VoiceAssets.REMOTE_TMP_DIR}/${Qdc507VoiceAssets.PCM_BRIDGE.fileName}; ")
-                append("alsaucm_test -c mdm9607-tomtom-i2s-snd-card set _verb VoiceCall >/dev/null 2>&1 || true; ")
-                append("${Qdc507VoiceAssets.REMOTE_TMP_DIR}/${Qdc507VoiceAssets.PCM_BRIDGE.fileName} --check")
+                append("chmod 0755 $dir/${Qdc507VoiceAssets.PCM_BRIDGE.fileName}; ")
+                append("n=0; ready=0; while [ \$n -lt 60 ]; do ")
+                append("if grep -Fq 'mdm9607-tomtom-i2s-snd-card' /proc/asound/cards 2>/dev/null && ")
+                append("[ -c /dev/snd/controlC0 ] && [ -c /dev/snd/pcmC0D4p ] && [ -c /dev/snd/pcmC0D4c ] && ")
+                append("[ -c /dev/snd/pcmC0D5p ] && [ -c /dev/snd/pcmC0D6c ]; then ready=1; break; fi; ")
+                append("sleep 0.2; n=$((n+1)); done; test \"\$ready\" -eq 1; ")
+                append("if ! grep -q 'ACDB -> Sent VocProc Cal!' '$dir/alsaucm.log' 2>/dev/null; then ")
+                append("for p in /proc/[0-9]*; do [ -r \"\$p/cmdline\" ] || continue; ")
+                append("if [ \"\$(tr '\\000' '\\n' < \"\$p/cmdline\" 2>/dev/null | sed -n '1p')\" = '/usr/bin/alsaucm_test' ]; then ")
+                append("kill -TERM \"\${p##*/}\" 2>/dev/null || true; sleep 0.2; fi; done; ")
+                append("rm -f /run/alsaucm_test '$dir/alsaucm.log'; ")
+                append("nohup /usr/bin/alsaucm_test </dev/null >>'$dir/alsaucm.log' 2>&1 & ")
+                append("n=0; while [ \$n -lt 40 ] && [ ! -p /run/alsaucm_test ]; do sleep 0.1; n=$((n+1)); done; ")
+                append("test -p /run/alsaucm_test; ")
+                append("printf 'open snd_soc_msm_9x07_Tomtom_I2S\\n' > /run/alsaucm_test; ")
+                append("printf 'set _verb VoLTE\\n' > /run/alsaucm_test; ")
+                append("printf 'set _enadev Auxpcm Rx\\n' > /run/alsaucm_test; ")
+                append("printf 'set _enadev Auxpcm Tx\\n' > /run/alsaucm_test; ")
+                append("n=0; while [ \$n -lt 80 ]; do ")
+                append("grep -q 'ACDB -> Sent VocProc Cal!' '$dir/alsaucm.log' 2>/dev/null && break; ")
+                append("sleep 0.1; n=$((n+1)); done; ")
+                append("grep -q 'ACDB -> Sent VocProc Cal!' '$dir/alsaucm.log'; fi; ")
+                append("test -p /run/voc_svr; ")
+                append("$dir/${Qdc507VoiceAssets.PCM_BRIDGE.fileName} --check")
             }
-            val initRes = adbRunner.runShell(initScript, timeoutMs = 15_000L).getOrThrow()
+            val initRes = adbRunner.runShell(initScript, timeoutMs = 25_000L).getOrThrow()
             require(initRes.exitCode == 0) {
                 "QDC507 runtime init/--check failed (rc=${initRes.exitCode}): ${initRes.stdout}"
             }
@@ -438,8 +460,9 @@ class Qdc507VoiceRuntime(
                 append("fi; ")
             }
             append("rm -f '$dir/bridge.pid'; ")
-            append("echo 0 > /sys/class/android_usb/android0/f_audio_source/enable 2>/dev/null || true; ")
-            append("if [ -S /run/voc_svr ]; then printf 'T\\nT\\nB\\n' >/run/voc_svr 2>/dev/null || true; fi")
+            append("if [ -w /sys/class/android_usb/f_audio/audio_enable ]; then ")
+            append("echo 0 > /sys/class/android_usb/f_audio/audio_enable 2>/dev/null || true; fi; ")
+            append("if [ -p /run/voc_svr ]; then printf 'T\\nT\\nB\\n' >/run/voc_svr 2>/dev/null || true; fi")
         }
 
         return runCatching {

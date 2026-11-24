@@ -6,7 +6,7 @@
 
 | 项目 | 命令 | 状态 | 实际结果 |
 | --- | --- | --- | --- |
-| Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (`9,270,875` bytes / 8.84 MiB) |
+| Debug APK 构建 | `./gradlew assembleDebug` | `PASS` | `BUILD SUCCESSFUL`，产物 `app/build/outputs/apk/debug/app-debug.apk` (`9,460,573` bytes / 9.02 MiB，含双屏拨号布局修复与 Phase 4 运行时) |
 | JVM 单元测试 | `./gradlew testDebugUnitTest` | `PASS` | **36 / 36 全部通过**（12 个测试套件，0 失败，0 跳过） |
 | Android Lint 静态检查 | `./gradlew lintDebug` | `PASS` | **0 Error**（退出码 0；已覆盖 API 26/31 音频路由与 `RECORD_AUDIO` 权限检查） |
 
@@ -38,14 +38,15 @@
 | 手柄 L1/R1 页签切换实测 | `PASS` | `duophone-latest.log` 记录 `D/DUO_INPUT gamepad_r1 / gamepad_l1` 切换至 `AT_CONSOLE` / `DIAGNOSTICS` |
 | USB 广播接收器注册（Android 16） | `PASS` | `I/DUO_USB receivers_registered: USB attach/detach and permission receivers active` |
 
-### 2.2 Phase 2 / Phase 3 / 双屏实机部署与 QDC507 硬件验收（2026-11-24 19:46 起，用户实测反馈）
+### 2.2 Phase 2 / Phase 3 / 双屏实机部署与 QDC507 硬件验收（2026-11-24 19:46–20:50，无线 ADB + 实机日志）
 
-| 用例 / 检查项 | 状态 | 实际结果 / 说明 |
+| 用例 / 检查项 | 状态 | 实际结果与实机日志证据 |
 | --- | --- | --- |
-| Phase 2/3/双屏 APK (`8.8 MB`, `7d39e71`) 安装与双屏拉起 | `PASS` | `19:46` 无线/ADB 部署至 `1b0b84fc` → `Success`；`MainActivity` (`PID 26861`)、`ModemService` (`isForeground=true types=0x00000010`)、`Display Id=0` 与 `Display Id=2` 均正常点亮 |
-| `USB-001` ~ `USB-003`（QDC507 直连识别、权限与 AT 握手） | `PASS` | 用户确认已将大疆 QDC507 模块直接连接至 Retroid Pocket Duo 并连接成功（底层状态机到达 `READY` 才允许发送/同步短信） |
-| `SMS-001` ~ `SMS-004`（真实 SIM 卡基础发短信与收短信） | `PASS` | 用户实测确认：**“已直接连接大疆模块，连接成功，可以发短信和接收短信”**；具体设备侧 `模块状态`（`USBCFG`/`IMS`/`CGMR`）与长短信/验证码专项 (`SMS-005`~`SMS-010`) 待采集截图或日志核验 |
-| `USB-004` ~ `USB-007`、`UI-002` ~ `UI-004` | `NOT_TESTED` | 待采集实机热插拔重连及双屏拨号/手柄按键交互反馈 |
-| `CALL-001` ~ `CALL-010`（真实运营商呼叫控制） | `NOT_TESTED` | 待用户实测 `ATD`/`ATA`/`ATH`/`+CLCC` 呼叫控制与状态显示 |
-| `AUDIO-001` ~ `AUDIO-010`（双向语音通话） | `NOT_TESTED` | Phase 4 代码/单测/Diagnostics UI 已完成并合入最新包（未推送到被 QDC507 占用的 Retroid），待部署并配合外部 `voice_runtime` 资源实机验收（含单工/并发录音零帧检出验证） |
+| 无线 ADB 安装与双屏拉起（含横屏拨号布局修复） | `PASS` | `20:41` `adb -s 192.168.1.21:39513 install -r app-debug.apk` → `Success`；`MainActivity`（主屏 `Display#0`）与 `SecondaryDeckActivity`（下屏 `Display#2`）均可正常点亮与交互 |
+| `USB-001` ~ `USB-003`（QDC507 识别、授权与 AT 握手） | `PASS` | `duophone-latest.log` 实机读取：`Baiwang / QDC507`，`0x2CA3:0x4006`（`ifaces=5`），固件 `QDC507GLEFM21`，锁定 AT 口 `IF#2`（`236ms`），China Broadnet 4G LTE (`+CEREG: 0,1`, `-81 dBm`)，`+QCFG: "ims",0,1`，`+QCFG: "usbcfg",0x2CA3,0x4006,1,1,1,1,1,0,0`（当前 `adb=0, uac=0`），`+QPCMV: (0,1),(0-2)` |
+| `SMS-001` ~ `SMS-004`（真实 SIM 卡收发短信） | `PASS` | 用户确认真实收发短信正常；日志记录 `AT+CMGF=0` / `AT+CNMI=2,1,0,0,0` / `AT+CMGL=4` 返回 `rawPdus=8 assembled=4` |
+| `UI-002`（双屏横屏拨号布局重构实机验证） | `PASS` | 实机测试主屏与下屏（`Display#2`）横屏拨号按键及右侧 `拨出 (ATD)` 完整可见，顺利发起多通真实拨号与通话中 DTMF 操作 |
+| `CALL-001` ~ `CALL-007`（真实运营商去电、来电、DTMF 与挂断） | `PASS` | `duophone-latest.log` 实机记录：`ATD` 去电成功并正确过滤 `+CLCC` 两条 `mode=1` 数据通道只保留语音通话；通话中发送 `AT+VTS="2/5/9/7/5/3/0"` 全部 `OK`；`ATH` 主动挂断成功；呼入 `RING` + `+CLIP` 号码显示正常 → `ATA` 接听 → 对端挂断 `NO CARRIER` 正常回退空闲 |
+| `CALL-008` ~ `CALL-010`（异常 `+CEER` / 锁屏来电）、`USB-004` ~ `USB-007`、`SMS-005` ~ `SMS-010`、`UI-003` ~ `UI-004` | `NOT_TESTED` | 待补测热插拔 20 次稳定性、锁屏通知细节及失败错误码分支 |
+| `AUDIO-001` ~ `AUDIO-010`（双向语音通话 — 独立验收项） | `NOT_TESTED` | 实测确认**通话无声音（预期现象）**：实机 `usbcfg` 当前为 `adb=0, uac=0`，待按 IMEI 备份配置并获用户授权开启 `adb=1, uac=1` 后再侧载 `/tmp` 语音运行时实测 |
 | `SYS-001` ~ `SYS-008`（后台稳定性与合盖功耗） | `NOT_TESTED` | 待 Phase 5 实测 |
