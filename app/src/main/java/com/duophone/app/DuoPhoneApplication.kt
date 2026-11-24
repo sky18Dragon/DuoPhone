@@ -100,21 +100,32 @@ class DuoPhoneApplication : Application() {
             onRealCallActive = {
                 val uacComplete = audioBridge.refreshDiagnostics().uacPair.isComplete
                 if (uacComplete && audioBridge.checkRecordPermission()) {
-                    var stage = voiceRuntime.state.value.stage
-                    if (stage == VoiceRuntimeStage.UNKNOWN || stage == VoiceRuntimeStage.ADB_UNAVAILABLE) {
+                    var snap = voiceRuntime.state.value
+                    if (snap.stage == VoiceRuntimeStage.UNKNOWN || snap.stage == VoiceRuntimeStage.ADB_UNAVAILABLE) {
                         voiceRuntime.probeReadOnly(uacDetected = true)
-                        stage = voiceRuntime.state.value.stage
+                        snap = voiceRuntime.state.value
                     }
-                    if (stage == VoiceRuntimeStage.PREPARED && voiceRuntime.state.value.bridgePid == null) {
+                    // Always start a fresh mavo-pcm-bridge --voice-route-session on ACTIVE VoLTE call
+                    // so hw:0,4 attaches to the live DSP voice path (stops any stale pre-call PID first).
+                    if (snap.aprLoaded && snap.voiceLoaded ||
+                        snap.stage == VoiceRuntimeStage.PREPARED ||
+                        snap.stage == VoiceRuntimeStage.ROUTE_ACTIVE
+                    ) {
                         voiceRuntime.startVoiceRoute()
-                        stage = voiceRuntime.state.value.stage
-                    }
-                    if (stage == VoiceRuntimeStage.ROUTE_ACTIVE && !audioBridge.state.value.isRunning) {
-                        audioBridge.start()
+                        kotlinx.coroutines.delay(300L)
+                        audioBridge.refreshDiagnostics()
+                        if (!audioBridge.state.value.isRunning) {
+                            audioBridge.start()
+                        }
                     }
                 }
             },
-            onRealCallEnded = { audioBridge.stop() },
+            onRealCallEnded = {
+                audioBridge.stop()
+                if (voiceRuntime.state.value.bridgePid != null) {
+                    voiceRuntime.stopVoiceRoute()
+                }
+            },
         )
         val backupDir = File(filesDir, "backups").apply { mkdirs() }
         configManager = Qdc507ConfigManager(modemController.atEngine, backupDir)

@@ -391,18 +391,24 @@ class Qdc507VoiceRuntime(
             val bin = "$dir/${Qdc507VoiceAssets.PCM_BRIDGE.fileName}"
             val launchCmd = buildString {
                 append("set -e; ")
-                append("nohup '$bin' --voice-route-session >'$dir/bridge.log' 2>&1 </dev/null & ")
+                append("nohup '$bin' --voice-route-session --verbose >'$dir/bridge.log' 2>&1 </dev/null & ")
                 append("p=$!; ")
                 append("echo \"\$p\" >'$dir/bridge.pid'; ")
                 append("sleep 1; ")
                 append("if [ ! -r \"/proc/\$p/stat\" ]; then cat '$dir/bridge.log' 2>/dev/null; exit 1; fi; ")
-                append("cat \"/proc/\$p/stat\"")
+                append("printf '===BLOG===\\n'; tail -n 15 '$dir/bridge.log' 2>/dev/null || true; ")
+                append("printf '===STAT===\\n'; cat \"/proc/\$p/stat\"")
             }
             val launchRes = adbRunner.runShell(launchCmd, timeoutMs = 12_000L).getOrThrow()
             require(launchRes.exitCode == 0) {
                 "Failed to start mavo-pcm-bridge: ${launchRes.stdout}"
             }
-            val statLine = launchRes.stdout.lineSequence().lastOrNull().orEmpty()
+            val blogSection = launchRes.stdout.substringAfter("===BLOG===", "").substringBefore("===STAT===").trim()
+            if (blogSection.isNotBlank()) {
+                DuoLogger.i(LogCategory.AUDIO, "voice_route_log", blogSection.replace('\n', ' '))
+            }
+            val statSection = launchRes.stdout.substringAfter("===STAT===", launchRes.stdout).trim()
+            val statLine = statSection.lineSequence().lastOrNull().orEmpty()
             val pid = statLine.substringBefore(' ').trim().toIntOrNull()
                 ?: error("Could not parse started bridge PID from stat line")
             val ticks = VoiceProbeParser.parseProcStatStartTicks(statLine)

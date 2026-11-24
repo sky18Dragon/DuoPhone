@@ -14,6 +14,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.LogCategory
@@ -306,6 +307,7 @@ class AndroidAudioBridge(
             track.play()
             var zeroChunks = 0
             var frames = 0
+            var lastUiEmitMs = 0L
             while (isActive) {
                 val read = record.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
@@ -325,6 +327,19 @@ class AndroidAudioBridge(
                     track.write(outSamples, 0, outSamples.size)
                 }
 
+                if (frames == 2) {
+                    runCatching {
+                        val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        val curMusic = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        val minTarget = (maxMusic * 0.7f).toInt()
+                        if (maxMusic > 0 && curMusic < minTarget) {
+                            val targetVol = (maxMusic * 0.85f).toInt().coerceAtLeast(1)
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                            DuoLogger.i(LogCategory.AUDIO, "uac_uplink_gain", "Raised STREAM_MUSIC $curMusic -> $targetVol/$maxMusic")
+                        }
+                    }
+                }
+
                 if (frames == 0 || frames % METER_LOG_INTERVAL_FRAMES == 0) {
                     val routedIn = record.routedDevice
                     val routedOut = track.routedDevice
@@ -337,11 +352,15 @@ class AndroidAudioBridge(
                 }
                 frames++
 
-                _state.value = _state.value.copy(
-                    uplinkRmsDbfs = if (mutedFlag) -96.0 else stats.rmsDbfs,
-                    uplinkZeroChunks = zeroChunks,
-                    androidCaptureConcurrencyWarning = !mutedFlag && zeroChunks >= ZERO_STREAM_WARN_THRESHOLD,
-                )
+                val nowMs = SystemClock.elapsedRealtime()
+                if (nowMs - lastUiEmitMs >= UI_METER_THROTTLE_MS) {
+                    lastUiEmitMs = nowMs
+                    _state.value = _state.value.copy(
+                        uplinkRmsDbfs = if (mutedFlag) -96.0 else stats.rmsDbfs,
+                        uplinkZeroChunks = zeroChunks,
+                        androidCaptureConcurrencyWarning = !mutedFlag && zeroChunks >= ZERO_STREAM_WARN_THRESHOLD,
+                    )
+                }
             }
         } catch (t: Throwable) {
             if (isActive) {
@@ -431,6 +450,7 @@ class AndroidAudioBridge(
             localTrack.play()
             var zeroChunks = 0
             var frames = 0
+            var lastUiEmitMs = 0L
             while (isActive) {
                 val read = uacRecord.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
@@ -455,10 +475,14 @@ class AndroidAudioBridge(
                 }
                 frames++
 
-                _state.value = _state.value.copy(
-                    downlinkRmsDbfs = stats.rmsDbfs,
-                    downlinkZeroChunks = zeroChunks,
-                )
+                val nowMs = SystemClock.elapsedRealtime()
+                if (nowMs - lastUiEmitMs >= UI_METER_THROTTLE_MS) {
+                    lastUiEmitMs = nowMs
+                    _state.value = _state.value.copy(
+                        downlinkRmsDbfs = stats.rmsDbfs,
+                        downlinkZeroChunks = zeroChunks,
+                    )
+                }
             }
         } catch (t: Throwable) {
             if (isActive) {
@@ -620,6 +644,7 @@ class AndroidAudioBridge(
         private const val FRAME_MS = 20
         private const val ZERO_STREAM_WARN_THRESHOLD = 25
         private const val METER_LOG_INTERVAL_FRAMES = 100
+        private const val UI_METER_THROTTLE_MS = 250L
         private val SUPPORTED_USB_RATES = setOf(8_000, 16_000, 44_100, 48_000)
     }
 }
