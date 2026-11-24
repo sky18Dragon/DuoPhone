@@ -49,9 +49,9 @@ data class AudioBridgeState(
     val isRunning: Boolean = false,
     val hasRecordPermission: Boolean = false,
     val uacPair: UacDevicePair = UacDevicePair(),
-    val localRoute: LocalAudioRoute = LocalAudioRoute.EARPIECE_OR_DEFAULT,
+    val localRoute: LocalAudioRoute = LocalAudioRoute.SPEAKER,
     val isMuted: Boolean = false,
-    val isSpeakerOn: Boolean = false,
+    val isSpeakerOn: Boolean = true,
     val uplinkRmsDbfs: Double = -96.0,
     val downlinkRmsDbfs: Double = -96.0,
     val uplinkZeroChunks: Int = 0,
@@ -160,6 +160,8 @@ class AndroidAudioBridge(
 
         val uacInRate = resolved.input.sampleRates.firstOrNull { it in SUPPORTED_USB_RATES } ?: DEFAULT_UAC_RATE_HZ
         val uacOutRate = resolved.output.sampleRates.firstOrNull { it in SUPPORTED_USB_RATES } ?: DEFAULT_UAC_RATE_HZ
+        val localInputDevice = findLocalInputDevice(targetRoute)
+        val localOutputDevice = findLocalOutputDevice(targetRoute)
 
         _state.value = _state.value.copy(
             isRunning = true,
@@ -169,14 +171,22 @@ class AndroidAudioBridge(
             downlinkZeroChunks = 0,
             androidCaptureConcurrencyWarning = false,
             lastError = null,
-            lastSummary = "双向 UAC 音频桥接运行中 (uacIn=${uacInRate}Hz, uacOut=${uacOutRate}Hz)",
+            lastSummary = "双向 UAC 音频桥接运行中 (uacIn=${uacInRate}Hz, uacOut=${uacOutRate}Hz, localOut=${localOutputDevice?.productName ?: targetRoute.label})",
         )
 
         uplinkJob = scope.launch {
-            runUplinkLoop(uacOutDevice = resolved.output, uacOutRateHz = uacOutRate)
+            runUplinkLoop(
+                localInDevice = localInputDevice,
+                uacOutDevice = resolved.output,
+                uacOutRateHz = uacOutRate,
+            )
         }
         downlinkJob = scope.launch {
-            runDownlinkLoop(uacInDevice = resolved.input, uacInRateHz = uacInRate)
+            runDownlinkLoop(
+                uacInDevice = resolved.input,
+                uacInRateHz = uacInRate,
+                localOutDevice = localOutputDevice,
+            )
         }
 
         DuoLogger.i(LogCategory.AUDIO, "bridge_started", _state.value.lastSummary)
@@ -213,6 +223,7 @@ class AndroidAudioBridge(
 
     @SuppressLint("MissingPermission")
     private suspend fun CoroutineScope.runUplinkLoop(
+        localInDevice: AudioDeviceInfo?,
         uacOutDevice: AudioDeviceInfo,
         uacOutRateHz: Int,
     ) {
@@ -226,7 +237,7 @@ class AndroidAudioBridge(
 
         val record = try {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                MediaRecorder.AudioSource.MIC,
                 localRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -235,6 +246,9 @@ class AndroidAudioBridge(
         } catch (t: Throwable) {
             reportLoopError("创建本地麦克风 AudioRecord 失败: ${t.message}")
             return
+        }
+        if (localInDevice != null) {
+            record.preferredDevice = localInDevice
         }
 
         var aec: AcousticEchoCanceler? = null
@@ -283,6 +297,7 @@ class AndroidAudioBridge(
         }
 
         track.preferredDevice = uacOutDevice
+        track.setVolume(AudioTrack.getMaxVolume())
         val resampler = StatefulLinearResampler(localRate, uacOutRateHz)
         val buffer = ShortArray(frameSamples)
 
@@ -290,6 +305,7 @@ class AndroidAudioBridge(
             record.startRecording()
             track.play()
             var zeroChunks = 0
+            var frames = 0
             while (isActive) {
                 val read = record.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
@@ -308,6 +324,18 @@ class AndroidAudioBridge(
                 if (outSamples.isNotEmpty()) {
                     track.write(outSamples, 0, outSamples.size)
                 }
+
+                if (frames == 0 || frames % METER_LOG_INTERVAL_FRAMES == 0) {
+                    val routedIn = record.routedDevice
+                    val routedOut = track.routedDevice
+                    DuoLogger.i(
+                        LogCategory.AUDIO,
+                        "uplink_meter",
+                        "frame=$frames rms=${"%.1f".format(stats.rmsDbfs)} zero=$zeroChunks " +
+                            "in=${routedIn?.type}:${routedIn?.productName} out=${routedOut?.type}:${routedOut?.productName}",
+                    )
+                }
+                frames++
 
                 _state.value = _state.value.copy(
                     uplinkRmsDbfs = if (mutedFlag) -96.0 else stats.rmsDbfs,
@@ -333,6 +361,7 @@ class AndroidAudioBridge(
     private suspend fun CoroutineScope.runDownlinkLoop(
         uacInDevice: AudioDeviceInfo,
         uacInRateHz: Int,
+        localOutDevice: AudioDeviceInfo?,
     ) {
         val localRate = LOCAL_PLAYBACK_RATE_HZ
         val frameSamples = ((uacInRateHz * FRAME_MS) / 1000).coerceAtLeast(160)
@@ -344,7 +373,7 @@ class AndroidAudioBridge(
 
         val uacRecord = try {
             AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.DEFAULT)
+                .setAudioSource(MediaRecorder.AudioSource.UNPROCESSED)
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setSampleRate(uacInRateHz)
@@ -389,6 +418,10 @@ class AndroidAudioBridge(
             reportLoopError("创建本地下行 AudioTrack 失败: ${t.message}")
             return
         }
+        if (localOutDevice != null) {
+            localTrack.preferredDevice = localOutDevice
+        }
+        localTrack.setVolume(AudioTrack.getMaxVolume())
 
         val resampler = StatefulLinearResampler(uacInRateHz, localRate)
         val buffer = ShortArray(frameSamples)
@@ -397,6 +430,7 @@ class AndroidAudioBridge(
             uacRecord.startRecording()
             localTrack.play()
             var zeroChunks = 0
+            var frames = 0
             while (isActive) {
                 val read = uacRecord.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
@@ -408,6 +442,18 @@ class AndroidAudioBridge(
                 if (outSamples.isNotEmpty()) {
                     localTrack.write(outSamples, 0, outSamples.size)
                 }
+
+                if (frames == 0 || frames % METER_LOG_INTERVAL_FRAMES == 0) {
+                    val routedIn = uacRecord.routedDevice
+                    val routedOut = localTrack.routedDevice
+                    DuoLogger.i(
+                        LogCategory.AUDIO,
+                        "downlink_meter",
+                        "frame=$frames rms=${"%.1f".format(stats.rmsDbfs)} zero=$zeroChunks " +
+                            "in=${routedIn?.type}:${routedIn?.productName} out=${routedOut?.type}:${routedOut?.productName}",
+                    )
+                }
+                frames++
 
                 _state.value = _state.value.copy(
                     downlinkRmsDbfs = stats.rmsDbfs,
@@ -513,6 +559,52 @@ class AndroidAudioBridge(
         )
     }
 
+    private fun findLocalInputDevice(route: LocalAudioRoute): AudioDeviceInfo? {
+        val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .filter { dev ->
+                dev.type != AudioDeviceInfo.TYPE_USB_DEVICE &&
+                    dev.type != AudioDeviceInfo.TYPE_USB_HEADSET
+            }
+        return when (route) {
+            LocalAudioRoute.BLUETOOTH -> inputs.firstOrNull { dev ->
+                dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+            } ?: inputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+            LocalAudioRoute.WIRED_HEADSET -> inputs.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+            } ?: inputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+            LocalAudioRoute.SPEAKER,
+            LocalAudioRoute.EARPIECE_OR_DEFAULT ->
+                inputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+                    ?: inputs.firstOrNull()
+        }
+    }
+
+    private fun findLocalOutputDevice(route: LocalAudioRoute): AudioDeviceInfo? {
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .filter { dev ->
+                dev.type != AudioDeviceInfo.TYPE_USB_DEVICE &&
+                    dev.type != AudioDeviceInfo.TYPE_USB_HEADSET
+            }
+        return when (route) {
+            LocalAudioRoute.BLUETOOTH -> outputs.firstOrNull { dev ->
+                dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+            } ?: outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            LocalAudioRoute.WIRED_HEADSET -> outputs.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+            } ?: outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            LocalAudioRoute.SPEAKER ->
+                outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    ?: outputs.firstOrNull()
+            LocalAudioRoute.EARPIECE_OR_DEFAULT ->
+                outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+                    ?: outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    ?: outputs.firstOrNull()
+        }
+    }
+
     private fun scoreUsbAudioDevice(info: AudioDeviceInfo): Int {
         val name = info.productName?.toString().orEmpty().uppercase()
         var score = if (info.type == AudioDeviceInfo.TYPE_USB_DEVICE) 10 else 5
@@ -527,6 +619,7 @@ class AndroidAudioBridge(
         private const val DEFAULT_UAC_RATE_HZ = 8_000
         private const val FRAME_MS = 20
         private const val ZERO_STREAM_WARN_THRESHOLD = 25
+        private const val METER_LOG_INTERVAL_FRAMES = 100
         private val SUPPORTED_USB_RATES = setOf(8_000, 16_000, 44_100, 48_000)
     }
 }

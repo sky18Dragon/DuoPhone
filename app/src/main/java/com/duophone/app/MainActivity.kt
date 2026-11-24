@@ -48,15 +48,27 @@ class MainActivity : ComponentActivity() {
         DuoLogger.i(LogCategory.SERVICE, "notif_permission", "POST_NOTIFICATIONS granted=$granted")
     }
 
+    private var pendingStartAudioBridgeAfterPermission = false
+
     private val recordAudioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         DuoLogger.i(LogCategory.AUDIO, "record_audio_permission", "RECORD_AUDIO granted=$granted")
-        (application as DuoPhoneApplication).audioBridge.refreshDiagnostics()
+        val app = application as DuoPhoneApplication
+        app.audioBridge.refreshDiagnostics()
+        val shouldAutoStart = granted && pendingStartAudioBridgeAfterPermission
+        pendingStartAudioBridgeAfterPermission = false
         lifecycleScope.launch {
-            snackbarHostState.showSnackbar(
-                if (granted) "已授予麦克风录音权限，可测试 Phase 4 音频桥接" else "未授予 RECORD_AUDIO 权限，仅可执行呼叫控制与只读探测",
-            )
+            if (shouldAutoStart) {
+                app.audioBridge.start().fold(
+                    onSuccess = { snackbarHostState.showSnackbar("麦克风权限已就绪，已自动启动 UAC 双向音频桥接") },
+                    onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "UAC 音频桥接启动失败") },
+                )
+            } else {
+                snackbarHostState.showSnackbar(
+                    if (granted) "已授予麦克风录音权限，可测试 Phase 4 音频桥接" else "未授予 RECORD_AUDIO 权限，仅可执行呼叫控制与只读探测",
+                )
+            }
         }
     }
 
@@ -249,6 +261,7 @@ class MainActivity : ComponentActivity() {
                             if (audioState.isRunning) {
                                 audioBridge.stop()
                             } else if (!audioBridge.checkRecordPermission()) {
+                                pendingStartAudioBridgeAfterPermission = true
                                 recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             } else {
                                 audioBridge.start().onFailure { err ->

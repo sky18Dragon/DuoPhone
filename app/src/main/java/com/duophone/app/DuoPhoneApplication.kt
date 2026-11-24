@@ -9,6 +9,7 @@ import com.duophone.app.device.AndroidUsbAdbClient
 import com.duophone.app.device.AndroidUsbSerialTransport
 import com.duophone.app.device.Qdc507ConfigManager
 import com.duophone.app.device.Qdc507VoiceRuntime
+import com.duophone.app.device.VoiceRuntimeStage
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.FileAndAndroidLogSink
 import com.duophone.app.diagnostics.LogCategory
@@ -96,6 +97,23 @@ class DuoPhoneApplication : Application() {
             onIncomingCallDismiss = { SmsNotificationHelper.cancelIncomingCall(this) },
             onMuteChanged = { muted -> audioBridge.setMuted(muted) },
             onSpeakerChanged = { speaker -> audioBridge.setSpeakerEnabled(speaker) },
+            onRealCallActive = {
+                val uacComplete = audioBridge.refreshDiagnostics().uacPair.isComplete
+                if (uacComplete && audioBridge.checkRecordPermission()) {
+                    var stage = voiceRuntime.state.value.stage
+                    if (stage == VoiceRuntimeStage.UNKNOWN || stage == VoiceRuntimeStage.ADB_UNAVAILABLE) {
+                        voiceRuntime.probeReadOnly(uacDetected = true)
+                        stage = voiceRuntime.state.value.stage
+                    }
+                    if (stage == VoiceRuntimeStage.PREPARED && voiceRuntime.state.value.bridgePid == null) {
+                        voiceRuntime.startVoiceRoute()
+                        stage = voiceRuntime.state.value.stage
+                    }
+                    if (stage == VoiceRuntimeStage.ROUTE_ACTIVE && !audioBridge.state.value.isRunning) {
+                        audioBridge.start()
+                    }
+                }
+            },
             onRealCallEnded = { audioBridge.stop() },
         )
         val backupDir = File(filesDir, "backups").apply { mkdirs() }
