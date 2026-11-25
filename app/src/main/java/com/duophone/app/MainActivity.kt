@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -19,6 +20,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.duophone.app.diagnostics.DeviceDiagnostics
@@ -27,19 +31,26 @@ import com.duophone.app.diagnostics.HostHardwareSnapshot
 import com.duophone.app.diagnostics.LogCategory
 import com.duophone.app.service.ModemService
 import com.duophone.app.ui.DualDisplayHelper
-import com.duophone.app.ui.DuoPhoneScreen
-import com.duophone.app.ui.DuoPhoneTheme
-import com.duophone.app.ui.DuoTab
 import com.duophone.app.ui.GamepadAction
 import com.duophone.app.ui.GamepadKeyRouter
+import com.duophone.app.ui.gta.DeckConsoleHost
+import com.duophone.app.ui.gta.GtaPhoneTheme
+import com.duophone.app.ui.gta.TopStageScreen
 import kotlinx.coroutines.launch
 
+/**
+ * Top immersive GTA 6 visual stage (Display#0, 1920x1080 landscape).
+ * Automatically pairs with SecondaryDeckActivity on Retroid Pocket Duo's Display#2,
+ * and seamlessly offers a single-screen toggle when no secondary display is present.
+ */
 class MainActivity : ComponentActivity() {
 
-    private var selectedTab by mutableStateOf(DuoTab.STATUS)
-    private var selectedSmsAddress by mutableStateOf<String?>(null)
     private lateinit var hostHardware: HostHardwareSnapshot
     private var hardwareState by mutableStateOf<HostHardwareSnapshot?>(null)
+    private var hasContactsPermState by mutableStateOf(false)
+    private var pendingStartAudioBridgeAfterPermission = false
+    private var singleScreenShowDeck by mutableStateOf(false)
+    private var secondaryAutoLaunched = false
     private val snackbarHostState = SnackbarHostState()
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -47,8 +58,6 @@ class MainActivity : ComponentActivity() {
     ) { granted ->
         DuoLogger.i(LogCategory.SERVICE, "notif_permission", "POST_NOTIFICATIONS granted=$granted")
     }
-
-    private var hasContactsPermState by mutableStateOf(false)
 
     private val readContactsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -65,8 +74,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    private var pendingStartAudioBridgeAfterPermission = false
 
     private val recordAudioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -95,6 +102,7 @@ class MainActivity : ComponentActivity() {
         val app = application as DuoPhoneApplication
         app.audioBridge.refreshDiagnostics()
         hasContactsPermState = app.contactRepository.hasSystemContactsPermission()
+        configureImmersiveSystemBars()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,17 +111,10 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
+        configureImmersiveSystemBars()
 
         val app = application as DuoPhoneApplication
-        val controller = app.modemController
-        val smsController = app.smsController
-        val callController = app.callController
-        val contactRepository = app.contactRepository
-        val voiceRuntime = app.voiceRuntime
-        val audioBridge = app.audioBridge
-        val configManager = app.configManager
-
-        hasContactsPermState = contactRepository.hasSystemContactsPermission()
+        hasContactsPermState = app.contactRepository.hasSystemContactsPermission()
         handleNavigationIntent(intent)
         requestNotificationPermissionIfNeeded()
         ModemService.start(this, triggerConnect = true)
@@ -121,242 +122,71 @@ class MainActivity : ComponentActivity() {
         hostHardware = DeviceDiagnostics.capture(this)
         hardwareState = hostHardware
 
-        setContent {
-            DuoPhoneTheme {
-                val modemState by controller.state.collectAsStateWithLifecycle()
-                val logs by DuoLogger.entries.collectAsStateWithLifecycle()
-                val smsMessages by smsController.messages.collectAsStateWithLifecycle()
-                val isSmsSyncing by smsController.isSyncing.collectAsStateWithLifecycle()
-                val smsSyncStatus by smsController.lastSyncStatus.collectAsStateWithLifecycle()
-                val smsThreads = remember(smsMessages) {
-                    app.smsRepository.buildThreads(smsMessages)
-                }
-                val callState by callController.state.collectAsStateWithLifecycle()
-                val callLogs by callController.callLogs.collectAsStateWithLifecycle()
-                val contacts by contactRepository.contacts.collectAsStateWithLifecycle()
-                val voiceState by voiceRuntime.state.collectAsStateWithLifecycle()
-                val audioState by audioBridge.state.collectAsStateWithLifecycle()
-                val configBackupState by configManager.state.collectAsStateWithLifecycle()
-                val hw = hardwareState ?: hostHardware
-                val secondaryDisplayId = remember(hw) {
-                    DualDisplayHelper.selectSecondaryDisplayId(
-                        hw.displays.map {
-                            com.duophone.app.ui.DisplayDescriptor(it.displayId, it.name, it.isDefault)
-                        },
-                    )
-                }
+        if (!secondaryAutoLaunched && DualDisplayHelper.findSecondaryDisplayId(this) != null) {
+            secondaryAutoLaunched = true
+            DualDisplayHelper.launchSecondaryDeck(this)
+        }
 
-                DuoPhoneScreen(
-                    selectedTab = selectedTab,
-                    onSelectTab = { selectedTab = it },
-                    modemState = modemState,
+        setContent {
+            val hw = hardwareState ?: hostHardware
+            val hasSecondaryDisplay = remember(hw) {
+                DualDisplayHelper.selectSecondaryDisplayId(
+                    hw.displays.map {
+                        com.duophone.app.ui.DisplayDescriptor(it.displayId, it.name, it.isDefault)
+                    },
+                ) != null
+            }
+
+            if (!hasSecondaryDisplay && singleScreenShowDeck) {
+                DeckConsoleHost(
+                    app = app,
+                    displayId = Display.DEFAULT_DISPLAY,
                     hostHardware = hw,
-                    logs = logs,
-                    smsMessages = smsMessages,
-                    smsThreads = smsThreads,
-                    isSmsSyncing = isSmsSyncing,
-                    smsSyncStatus = smsSyncStatus,
-                    selectedSmsAddress = selectedSmsAddress,
-                    callState = callState,
-                    callLogs = callLogs,
-                    secondaryDisplayId = secondaryDisplayId,
-                    snackbarHostState = snackbarHostState,
-                    onConnect = { lifecycleScope.launch { controller.connect() } },
-                    onLaunchSecondaryDeck = {
-                        if (!DualDisplayHelper.launchSecondaryDeck(this@MainActivity)) {
-                            lifecycleScope.launch {
-                                snackbarHostState.showSnackbar("当前未检测到可用副屏或副屏启动受限，继续单屏模式")
-                            }
-                        }
-                    },
-                    onRefreshTelemetry = {
-                        lifecycleScope.launch { controller.refreshTelemetry(includeIdentityAndConfig = true) }
-                    },
-                    onRefreshHostHardware = {
-                        hardwareState = DeviceDiagnostics.capture(this)
-                    },
-                    onRunAtCommand = { cmd ->
-                        lifecycleScope.launch { controller.runRawAtCommand(cmd) }
-                    },
-                    onClearConsole = { controller.clearConsole() },
-                    onClearLogs = { DuoLogger.clear() },
-                    onSelectSmsAddress = { addr ->
-                        selectedSmsAddress = addr
-                        if (addr != null) {
-                            lifecycleScope.launch { smsController.markThreadRead(addr) }
-                        }
-                    },
-                    onSyncSms = {
-                        lifecycleScope.launch { smsController.syncFromModem(notifyNew = false) }
-                    },
-                    onSendSms = { number, body ->
-                        lifecycleScope.launch {
-                            val res = smsController.sendSms(number, body)
-                            val msg = if (res.success) {
-                                "短信已发送 (${res.segmentsSent}/${res.totalSegments} 分片)"
-                            } else {
-                                res.errorMessage ?: "发送失败"
-                            }
-                            snackbarHostState.showSnackbar(msg)
-                        }
-                    },
-                    onSimulateIncomingSms = {
-                        lifecycleScope.launch {
-                            smsController.injectSimulatedIncomingSms(
-                                "+8613800138000",
-                                "【DuoPhone 模拟测试】您的登录验证码为 619204，仅用于无硬件 App 通知与持久化验证。",
-                            )
-                            snackbarHostState.showSnackbar("已写入模拟收件短信并触发通知")
-                        }
-                    },
-                    onCopyOtp = { otp ->
-                        lifecycleScope.launch { snackbarHostState.showSnackbar("已复制验证码：$otp") }
-                    },
-                    onDeleteSms = { id ->
-                        lifecycleScope.launch { smsController.deleteLocalMessage(id) }
-                    },
-                    onDial = { number ->
-                        lifecycleScope.launch {
-                            callController.dial(number)?.let { err -> snackbarHostState.showSnackbar(err) }
-                        }
-                    },
-                    onAnswerCall = {
-                        lifecycleScope.launch {
-                            callController.answer()?.let { err -> snackbarHostState.showSnackbar(err) }
-                        }
-                    },
-                    onHangupOrRejectCall = {
-                        lifecycleScope.launch {
-                            callController.hangupOrReject()?.let { err -> snackbarHostState.showSnackbar(err) }
-                        }
-                    },
-                    onSendDtmf = { digit ->
-                        lifecycleScope.launch {
-                            callController.sendDtmf(digit)?.let { err -> snackbarHostState.showSnackbar(err) }
-                        }
-                    },
-                    onToggleCallMute = { callController.toggleMute() },
-                    onToggleCallSpeaker = { callController.toggleSpeaker() },
-                    onSimulateIncomingCall = {
-                        callController.simulateIncomingCall("+8613800138000")
-                        lifecycleScope.launch { snackbarHostState.showSnackbar("已触发模拟来电与系统通知") }
-                    },
-                    onSimulateOutgoingCall = { num ->
-                        callController.simulateOutgoingCall(num)
-                    },
-                    onDeleteCallLog = { id ->
-                        lifecycleScope.launch { callController.deleteCallLog(id) }
-                    },
-                    onClearCallLogs = {
-                        lifecycleScope.launch { callController.clearCallLogs() }
-                    },
-                    voiceState = voiceState,
-                    audioState = audioState,
-                    onProbeVoiceRuntime = {
-                        lifecycleScope.launch {
-                            val uacPresent = modemState.usbDevice?.hasUacInterface == true
-                            voiceRuntime.probeReadOnly(uacDetected = uacPresent)
-                            audioBridge.refreshDiagnostics()
-                        }
-                    },
-                    onPrepareVoiceRuntime = {
-                        lifecycleScope.launch {
-                            val uacPresent = modemState.usbDevice?.hasUacInterface == true
-                            voiceRuntime.prepareReversibleRuntime(uacDetected = uacPresent).onFailure { err ->
-                                snackbarHostState.showSnackbar(err.message ?: "语音运行时准备失败")
-                            }
-                        }
-                    },
-                    onToggleVoiceRoute = {
-                        lifecycleScope.launch {
-                            val res = if (voiceState.bridgePid != null) {
-                                voiceRuntime.stopVoiceRoute()
-                            } else {
-                                voiceRuntime.startVoiceRoute()
-                            }
-                            res.onFailure { err ->
-                                snackbarHostState.showSnackbar(err.message ?: "模块语音路由操作失败")
-                            }
-                        }
-                    },
-                    onToggleAudioBridge = {
-                        lifecycleScope.launch {
-                            if (audioState.isRunning) {
-                                audioBridge.stop()
-                            } else if (!audioBridge.checkRecordPermission()) {
-                                pendingStartAudioBridgeAfterPermission = true
-                                recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            } else {
-                                audioBridge.start().onFailure { err ->
-                                    snackbarHostState.showSnackbar(err.message ?: "UAC 音频桥接启动失败")
-                                }
-                            }
-                        }
-                    },
-                    onSelectAudioRoute = { route ->
-                        audioBridge.applyLocalAudioRoute(route)
-                    },
-                    configBackupState = configBackupState,
-                    onBackupModemConfig = {
-                        lifecycleScope.launch {
-                            configManager.backupCurrentConfig().fold(
-                                onSuccess = { rec ->
-                                    snackbarHostState.showSnackbar("配置备份完成: ${rec.usbCfg.summaryTuple()}")
-                                },
-                                onFailure = { err ->
-                                    snackbarHostState.showSnackbar(err.message ?: "配置备份失败")
-                                },
-                            )
-                        }
-                    },
-                    onEnableAdbUac = {
-                        lifecycleScope.launch {
-                            configManager.enableAdbAndUacWithReboot().fold(
-                                onSuccess = { msg -> snackbarHostState.showSnackbar(msg) },
-                                onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "开启 ADB+UAC 失败") },
-                            )
-                        }
-                    },
-                    onRestoreOriginalUsbCfg = {
-                        lifecycleScope.launch {
-                            configManager.restoreOriginalUsbCfgWithReboot().fold(
-                                onSuccess = { msg -> snackbarHostState.showSnackbar(msg) },
-                                onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "还原原厂 USB 失败") },
-                            )
-                        }
-                    },
-                    contacts = contacts,
                     hasContactsPermission = hasContactsPermState,
-                    onAdjustCallVolume = { delta -> audioBridge.adjustCallVolume(delta) },
-                    onSaveLocalContact = { id, name, phone, note ->
-                        lifecycleScope.launch {
-                            runCatching { contactRepository.upsertLocal(id, name, phone, note) }.fold(
-                                onSuccess = { snackbarHostState.showSnackbar("已保存联系人：$name") },
-                                onFailure = { err -> snackbarHostState.showSnackbar(err.message ?: "保存联系人失败") },
-                            )
-                        }
-                    },
-                    onDeleteLocalContact = { id ->
-                        lifecycleScope.launch {
-                            contactRepository.deleteLocal(id)
-                            snackbarHostState.showSnackbar("已删除本地联系人")
-                        }
-                    },
-                    onSyncSystemContacts = {
-                        if (contactRepository.hasSystemContactsPermission()) {
+                    snackbarHostState = snackbarHostState,
+                    onRefreshHostHardware = { hardwareState = DeviceDiagnostics.capture(this) },
+                    onRequestContactsPermission = {
+                        if (app.contactRepository.hasSystemContactsPermission()) {
                             lifecycleScope.launch {
-                                contactRepository.reload()
-                                snackbarHostState.showSnackbar("已同步系统通讯录（共 ${contactRepository.contacts.value.size} 条）")
+                                app.contactRepository.reload()
+                                snackbarHostState.showSnackbar("已同步系统通讯录（共 ${app.contactRepository.contacts.value.size} 条）")
                             }
                         } else {
                             readContactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
                         }
                     },
-                    onOpenSmsForNumber = { number ->
-                        selectedSmsAddress = number
-                        selectedTab = DuoTab.SMS
+                    onRequestRecordAudioPermissionAndStart = {
+                        pendingStartAudioBridgeAfterPermission = true
+                        recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     },
+                    onExitSingleScreenDeck = { singleScreenShowDeck = false },
                 )
+            } else {
+                GtaPhoneTheme {
+                    val stageState by app.gtaStageCoordinator.state.collectAsStateWithLifecycle()
+                    val modemState by app.modemController.state.collectAsStateWithLifecycle()
+                    val callState by app.callController.state.collectAsStateWithLifecycle()
+                    val audioState by app.audioBridge.state.collectAsStateWithLifecycle()
+                    val smsMessages by app.smsController.messages.collectAsStateWithLifecycle()
+                    val smsThreads = remember(smsMessages) { app.smsRepository.buildThreads(smsMessages) }
+                    val contacts by app.contactRepository.contacts.collectAsStateWithLifecycle()
+
+                    TopStageScreen(
+                        stageState = stageState,
+                        events = app.gtaStageCoordinator.events,
+                        modemState = modemState,
+                        callState = callState,
+                        audioState = audioState,
+                        smsMessages = smsMessages,
+                        smsThreads = smsThreads,
+                        contacts = contacts,
+                        onOpeningFinished = { app.gtaStageCoordinator.onOpeningFinished() },
+                        onSkipOpening = { app.gtaStageCoordinator.skipOpening() },
+                        hasSecondaryDisplay = hasSecondaryDisplay,
+                        singleScreenPreviewDeck = singleScreenShowDeck,
+                        onToggleSingleScreenDeck = { singleScreenShowDeck = !singleScreenShowDeck },
+                    )
+                }
             }
         }
     }
@@ -371,56 +201,58 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        val callController = (application as DuoPhoneApplication).callController
-        val action = GamepadKeyRouter.resolve(
+        val app = application as DuoPhoneApplication
+        val action = GamepadKeyRouter.resolveDeckMenu(
             keyCode = keyCode,
-            currentTab = selectedTab,
-            callPhase = callController.state.value.phase,
+            currentMenu = app.gtaStageCoordinator.state.value.activeMenu,
+            callPhase = app.callController.state.value.phase,
         )
         return when (action) {
-            is GamepadAction.SwitchTab -> {
-                selectedTab = action.tab
-                DuoLogger.d(LogCategory.INPUT, "gamepad_nav", "keyCode=$keyCode -> tab=${action.tab.name}")
+            is GamepadAction.SwitchDeckMenu -> {
+                app.gtaStageCoordinator.selectMenu(action.menu)
+                DuoLogger.d(LogCategory.INPUT, "stage_gamepad_nav", "keyCode=$keyCode -> menu=${action.menu.name}")
                 true
             }
             GamepadAction.AnswerIncomingCall -> {
-                lifecycleScope.launch { callController.answer() }
-                DuoLogger.d(LogCategory.INPUT, "gamepad_a", "Answered incoming call")
+                app.gtaStageCoordinator.onAnswerOrHangupVisualFeedback(isAnswer = true)
+                lifecycleScope.launch { app.callController.answer() }
                 true
             }
             GamepadAction.HangupOrRejectCall -> {
-                lifecycleScope.launch { callController.hangupOrReject() }
-                DuoLogger.d(LogCategory.INPUT, "gamepad_b", "Rejected/hung up call")
+                app.gtaStageCoordinator.onAnswerOrHangupVisualFeedback(isAnswer = false)
+                lifecycleScope.launch { app.callController.hangupOrReject() }
                 true
             }
             GamepadAction.ToggleMute -> {
-                callController.toggleMute()
-                DuoLogger.d(LogCategory.INPUT, "gamepad_x", "Toggled mute")
+                app.callController.toggleMute()
                 true
             }
             GamepadAction.ToggleSpeaker -> {
-                callController.toggleSpeaker()
-                DuoLogger.d(LogCategory.INPUT, "gamepad_y", "Toggled speaker")
+                app.callController.toggleSpeaker()
                 true
             }
-            null -> super.onKeyDown(keyCode, event)
+            else -> super.onKeyDown(keyCode, event)
         }
     }
 
     private fun handleNavigationIntent(intent: Intent?) {
-        when (intent?.getStringExtra("open_tab")) {
-            "CALL" -> selectedTab = DuoTab.CALL
-            "SMS" -> {
-                selectedTab = DuoTab.SMS
-                val addr = intent.getStringExtra("sms_address")
-                if (!addr.isNullOrBlank()) {
-                    selectedSmsAddress = addr
-                    lifecycleScope.launch {
-                        (application as DuoPhoneApplication).smsController.markThreadRead(addr)
-                    }
+        val tab = intent?.getStringExtra("open_tab")
+        val smsAddr = intent?.getStringExtra("sms_address")
+        if (tab != null) {
+            (application as DuoPhoneApplication).gtaStageCoordinator.navigateFromNotification(tab, smsAddr)
+            if (tab == "SMS" && !smsAddr.isNullOrBlank()) {
+                lifecycleScope.launch {
+                    (application as DuoPhoneApplication).smsController.markThreadRead(smsAddr)
                 }
             }
         }
+    }
+
+    private fun configureImmersiveSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
     private fun requestNotificationPermissionIfNeeded() {

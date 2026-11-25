@@ -3,6 +3,7 @@ package com.duophone.app
 import android.app.Application
 import com.duophone.app.audio.AndroidAudioBridge
 import com.duophone.app.audio.CallRingtoneController
+import com.duophone.app.audio.GtaUiSoundController
 import com.duophone.app.data.CallLogRepository
 import com.duophone.app.data.ContactRepository
 import com.duophone.app.data.DuoDatabaseHelper
@@ -20,6 +21,8 @@ import com.duophone.app.domain.CallUiPhase
 import com.duophone.app.domain.ModemController
 import com.duophone.app.domain.SmsServiceController
 import com.duophone.app.service.SmsNotificationHelper
+import com.duophone.app.stage.GtaConfigRepository
+import com.duophone.app.stage.GtaStageCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -69,6 +72,15 @@ class DuoPhoneApplication : Application() {
     lateinit var configManager: Qdc507ConfigManager
         private set
 
+    lateinit var gtaConfigRepository: GtaConfigRepository
+        private set
+
+    lateinit var gtaSoundController: GtaUiSoundController
+        private set
+
+    lateinit var gtaStageCoordinator: GtaStageCoordinator
+        private set
+
     override fun onCreate() {
         super.onCreate()
         DuoLogger.sink = FileAndAndroidLogSink(File(filesDir, "logs/duophone-latest.log"))
@@ -114,6 +126,15 @@ class DuoPhoneApplication : Application() {
             onNewIncomingSms = { sms ->
                 val name = contactRepository.resolveDisplayName(sms.address)
                 SmsNotificationHelper.showIncomingSms(this, sms, displayName = name)
+                if (::gtaStageCoordinator.isInitialized) {
+                    gtaStageCoordinator.onIncomingSms(
+                        address = sms.address,
+                        displayName = name,
+                        body = sms.body,
+                        otpCode = sms.otpCode,
+                        timestampMs = sms.timestampMs,
+                    )
+                }
             },
         )
         callController = CallController(
@@ -175,6 +196,21 @@ class DuoPhoneApplication : Application() {
         )
         val backupDir = File(filesDir, "backups").apply { mkdirs() }
         configManager = Qdc507ConfigManager(modemController.atEngine, backupDir)
+        gtaConfigRepository = GtaConfigRepository(this)
+        gtaSoundController = GtaUiSoundController(
+            context = this,
+            isSoundEnabled = {
+                !::gtaStageCoordinator.isInitialized || gtaStageCoordinator.state.value.soundEnabled
+            },
+            isHapticEnabled = {
+                !::gtaStageCoordinator.isInitialized || gtaStageCoordinator.state.value.hapticEnabled
+            },
+        )
+        gtaStageCoordinator = GtaStageCoordinator(
+            callStateFlow = callController.state,
+            configStore = gtaConfigRepository,
+            soundEffects = gtaSoundController,
+        )
         appScope.launch { contactRepository.reload() }
         DuoLogger.i(LogCategory.SERVICE, "app_create", "DuoPhoneApplication initialized")
     }

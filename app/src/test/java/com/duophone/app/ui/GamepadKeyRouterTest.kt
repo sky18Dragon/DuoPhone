@@ -2,6 +2,7 @@ package com.duophone.app.ui
 
 import android.view.KeyEvent
 import com.duophone.app.domain.CallUiPhase
+import com.duophone.app.stage.DeckMenu
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -56,6 +57,34 @@ class GamepadKeyRouterTest {
         assertEquals(
             GamepadAction.ToggleSpeaker,
             GamepadKeyRouter.resolve(KeyEvent.KEYCODE_BUTTON_Y, DuoTab.CALL, CallUiPhase.ACTIVE),
+        )
+    }
+
+    @Test
+    fun routesGtaThreeMenuDeckGamepadKeys() {
+        assertEquals(
+            GamepadAction.SwitchDeckMenu(DeckMenu.SMS),
+            GamepadKeyRouter.resolveDeckMenu(KeyEvent.KEYCODE_BUTTON_R1, DeckMenu.PHONE, CallUiPhase.IDLE),
+        )
+        assertEquals(
+            GamepadAction.SwitchDeckMenu(DeckMenu.SETTINGS),
+            GamepadKeyRouter.resolveDeckMenu(KeyEvent.KEYCODE_BUTTON_L1, DeckMenu.PHONE, CallUiPhase.IDLE),
+        )
+        assertEquals(
+            GamepadAction.SwitchDeckMenu(DeckMenu.PHONE),
+            GamepadKeyRouter.resolveDeckMenu(KeyEvent.KEYCODE_BUTTON_START, DeckMenu.SETTINGS, CallUiPhase.IDLE),
+        )
+        assertEquals(
+            GamepadAction.SwitchDeckMenu(DeckMenu.SMS),
+            GamepadKeyRouter.resolveDeckMenu(KeyEvent.KEYCODE_BUTTON_SELECT, DeckMenu.PHONE, CallUiPhase.IDLE),
+        )
+        assertEquals(
+            GamepadAction.AnswerIncomingCall,
+            GamepadKeyRouter.resolveDeckMenu(KeyEvent.KEYCODE_BUTTON_A, DeckMenu.PHONE, CallUiPhase.INCOMING),
+        )
+        assertEquals(
+            GamepadAction.HangupOrRejectCall,
+            GamepadKeyRouter.resolveDeckMenu(KeyEvent.KEYCODE_BUTTON_B, DeckMenu.SMS, CallUiPhase.ACTIVE),
         )
     }
 }

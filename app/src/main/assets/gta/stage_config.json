@@ -1,0 +1,36 @@
+{
+  "assets": {
+    "openingVideoFile": "opening_light.mp4",
+    "openingLightVideoFile": "opening_light.mp4",
+    "openingDarkVideoFile": "opening_dark.mp4",
+    "idleLoopVideoFile": "",
+    "idleImageFile": "idle_hand_phone_light.png",
+    "idleLightImageFile": "idle_hand_phone_light.png",
+    "idleDarkImageFile": "idle_hand_phone_dark.png",
+    "dialingImageFile": "dialing_pose_light.png",
+    "dialingLightImageFile": "dialing_pose_light.png",
+    "dialingDarkImageFile": "dialing_pose_dark.png",
+    "thumbImageFile": "",
+    "thumbFramesDir": ""
+  },
+  "phoneOverlay": {
+    "leftFraction": 0.4343,
+    "topFraction": 0.2222,
+    "widthFraction": 0.1528,
+    "heightFraction": 0.5615,
+    "rotationX": 0.0,
+    "rotationY": 0.0,
+    "rotationZ": 7.00,
+    "cameraDistanceDp": 16.0,
+    "cornerRadiusDp": 9.0,
+    "breathingEnabled": true,
+    "breathingAmplitudeDp": 4.0,
+    "screenBrightness": 0.96,
+    "quadCorners": {
+      "tlX": 0.455414, "tlY": 0.216261,
+      "trX": 0.602703, "trY": 0.248412,
+      "brX": 0.565333, "brY": 0.789487,
+      "blX": 0.418044, "blY": 0.757336
+    }
+  }
+}
