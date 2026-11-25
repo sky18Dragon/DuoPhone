@@ -4,15 +4,15 @@
 Duo Phone 是面向 **Retroid Pocket Duo**（Android 16 / SDK 36 / ARM64 / 双屏掌机）+ **大疆第一代 4G 增强图传模块（DJI Cellular Dongle Gen 1 / QDC507 / MDM9207）** 的独立非 Root Android 通信终端应用。
 
 ## 2. 开发环境与构建命令
-- **JDK**: OpenJDK 25.0.2 (`/opt/homebrew/opt/openjdk`, `JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home`)
-- **Android SDK**: `/Users/zhanghuilong/Library/Android/sdk`（`android-36`, `build-tools/36.0.0`, `ndk/28.2.13676358`, `cmake/3.22.1`）
-- **ADB**: `/Users/zhanghuilong/Library/Android/sdk/platform-tools/adb`
+- **JDK**: OpenJDK 25.0.2 (`JAVA_HOME=<JDK_25_HOME>`)
+- **Android SDK**: `<ANDROID_SDK_DIR>`（`android-36`, `build-tools/36.0.0`, `ndk/28.2.13676358`, `cmake/3.22.1`）
+- **ADB**: `<ANDROID_SDK_DIR>/platform-tools/adb`
 - **构建系统**: Gradle 9.x + AGP 9.x（内置 Kotlin 支持）+ Jetpack Compose
 
 常用命令：
 ```bash
-export JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
-export ANDROID_HOME=/Users/zhanghuilong/Library/Android/sdk
+export JAVA_HOME=/path/to/jdk-25
+export ANDROID_HOME=/path/to/Android/sdk
 
 ./gradlew assembleDebug
 ./gradlew testDebugUnitTest

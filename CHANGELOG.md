@@ -2,6 +2,15 @@
 
 All notable changes to Duo Phone will be documented in this file.
 
+## [1.0.0] - 2026-11-25
+
+### Release, GTA 6 Dual-Screen UI & Visual Polish
+- **GTA 6 Immersive Top Stage (`Display #0`, `1920x1080`)**: Implemented `TopStageScreen`, `PerspectiveQuadHost` (4-corner homography overlay synced with opening transition & breathing idle motion), daylight/night theme assets (`idle_hand_phone_*`, `dialing_pose_*`, `opening_*.mp4`), and `stage_config.json` flat-plane `+7°` grip calibration.
+- **Real-Smartphone Virtual Phone OS (`VirtualPhoneUi.kt`)**: Redesigned the in-hand smartphone interface with a live status bar (clock, real modem signal bars/`4G` indicator, battery pill), thumb-zone T9 dialer, modern SMS bubble stream with persistent composer bar, and call/settings screens.
+- **GTA 6 Bottom Console Deck (`Display #2`, `1280x960`)**: Replaced standalone legacy deck screens with `DeckConsoleHost`, `BottomDeckScreen`, `DeckPhonePanel`, `DeckSmsPanel`, and `DeckSettingsPanel` matching GTA 6 HUD styling (`$0`/`$3,880` counters, controller hints, Day/Night sync, collapsible engineering diagnostics workbench).
+- **Vice Sunset Adaptive Launcher Icon**: Added full 5-density `mipmap-*` + Android 13+ monochrome launcher icon set (`ic_launcher`, `ic_launcher_round`, `ic_launcher_monochrome`).
+- **Release Signing & Repository Cleanup**: Configured formal V1/V2/V3 Release signing (`keystore.properties.example`), R8/resource shrinking (`DuoPhone-v1.0.0`), MIT `LICENSE`, bilingual `README.md` / `README_EN.md`, and removed unused legacy screen files and duplicate assets (**55/55 unit tests passing**, **0 Lint errors**).
+
 ## [Unreleased]
 
 ### Phase 5 & 6 — P1 Productization: Contacts, Ringtone, Quick Notifications, Headset Auto-Routing & Service Stability (2026-11-24)
@@ -51,7 +60,7 @@ All notable changes to Duo Phone will be documented in this file.
 - Implemented serialized `AtEngine` with continuous line-framed URC demuxing, SMS `>` prompt handling, and non-retryable side-effect command guard (`AtCommandPolicy`).
 - Implemented `ModemController` state machine (`DISCONNECTED` → `READY` + 5 abnormal states) and Android 16 `connectedDevice` foreground `ModemService`.
 - Implemented `DuoLogger` (12 categorized tags, PII redaction, rolling local file log) and Retroid Pocket Duo hardware diagnostics UI + AT Debug Console.
-- Added 12 JVM unit tests (12/12 passing), passed `lintDebug` (0 errors), and verified installation and runtime startup on physical Retroid Pocket Duo (`1b0b84fc`).
+- Added 12 JVM unit tests (12/12 passing), passed `lintDebug` (0 errors), and verified installation and runtime startup on physical Retroid Pocket Duo (`1b0b****`).
 
 ### Phase 0 — Research, Audit & Device Diagnostics (2026-11-24)
 - Completed source-code and license audit of CardDock, MaVo, DJOneHubNative, DJ4Hub, and DJOneHub-mac-enhanced.

@@ -1,6 +1,6 @@
 # Retroid Pocket Duo 兼容性实机报告 (`RETROID_DUO_COMPATIBILITY.md`)
 
-实机采集日期：2026-11-24 | 设备序列号：`1b0b84fc` | 指纹：`qti/sun/sun:16/BQ2A.260427.001-BP2A.250705.008/eng.RPDuo.20261114.082341:user/dev-keys`
+实机采集日期：2026-11-24 | 设备序列号：`1b0b****` | 指纹：`qti/sun/sun:16/BQ2A.260427.001-BP2A.250705.008/eng.RPDuo.20261114.082341:user/dev-keys`
 
 ## 1. 已证实能力（实机 ADB 证据）
 | 能力域 | 实机结论 | 证据摘要 |

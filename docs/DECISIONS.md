@@ -3,12 +3,12 @@
 ## ADR-001：不直接 Fork CardDock 仓库，改为在 Duo Phone 中模块化新建工程并借鉴其 MIT 经验
 - **日期**：2026-11-24
 - **背景**：CardDock（MIT）是最贴近的 Android USB Host 参考项目，但源码审计显示其仅有 4 个扁平文件（无 Service、无 PDU 短信、无电话控制、无音频、无 Room、无测试），且绑定 Gradle 8.9（不兼容本机 OpenJDK 25）和 `dev.usbsms` 包名。
-- **决策**：在 `/Users/zhanghuilong/Documents/DuoPhone` 以 `com.duophone.app` 构建清晰的 8 层模块化 Android 工程（Gradle 9.x + AGP 9.x + Jetpack Compose），借鉴 CardDock 经实机验证的 USB Host 探测、CDC DTR/RTS 握手与按 IMEI 备份配置思路，并在 `THIRD_PARTY_NOTICES.md` 保留 MIT 致谢。
+- **决策**：在项目根目录以 `com.duophone.app` 构建清晰的 8 层模块化 Android 工程（Gradle 9.x + AGP 9.x + Jetpack Compose），借鉴 CardDock 经实机验证的 USB Host 探测、CDC DTR/RTS 握手与按 IMEI 备份配置思路，并在 `THIRD_PARTY_NOTICES.md` 保留 MIT 致谢。
 - **影响**：避免后期因单文件紧耦合导致的重构债务，直接满足 Android 16 (API 36) + JDK 25 构建与单元测试需求。
 
 ## ADR-002：采用独立 App 呼叫管理，不依赖 Android Telecom / `ConnectionService`
 - **日期**：2026-11-24
-- **背景**：在 Retroid Pocket Duo (`1b0b84fc`) 实机执行 `adb shell dumpsys telecom` 返回 `Can't find service: telecom`，确认系统未运行 Telecom 服务。
+- **背景**：在 Retroid Pocket Duo 实机执行 `adb shell dumpsys telecom` 返回 `Can't find service: telecom`，确认系统未运行 Telecom 服务。
 - **决策**：所有呼叫状态机、来电提醒、响铃、音频路由和通话记录均由 `ModemService` 独立管理；保留未来在标准 Android 手机上可选适配 Telecom 的扩展位。
 
 ## ADR-003：短信采用 PDU 模式 (`AT+CMGF=0`) 为主，保持 AT 通道字符集为 `GSM/IRA`

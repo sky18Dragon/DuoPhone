@@ -1,5 +1,6 @@
 # Gradle & Android
 .gradle/
+.kotlin/
 build/
 **/build/
 local.properties
@@ -14,6 +15,7 @@ captures/
 keystore.properties
 *.jks
 *.keystore
+*.apk
 
 # Logs & Runtime Dumps (may contain PII / device IDs)
 *.log

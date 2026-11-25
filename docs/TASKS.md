@@ -4,7 +4,7 @@
 
 ## Phase 0：技术调研与环境准备 — ✅ 已完成
 - [x] 检查工作目录、Git 与本地 Android/JDK/SDK/NDK 工具链
-- [x] 通过 ADB 采集 Retroid Pocket Duo (`1b0b84fc`) 完整系统能力与硬件拓扑
+- [x] 通过 ADB 采集 Retroid Pocket Duo (`1b0b****`) 完整系统能力与硬件拓扑
 - [x] 克隆并逐行审计 5 个参考仓库（CardDock、MaVo、DJOneHubNative、DJ4Hub、DJOneHub-mac-enhanced）
 - [x] 完成开源许可证合规审计与风险边界定义
 - [x] 制定架构方案（ADR-001 ~ ADR-005）并生成完整项目文档与 `AGENTS.md`
@@ -19,7 +19,7 @@
 - [x] 实现 `ModemService` 前台服务骨架与热插拔/断线自动重连恢复
 - [x] 实现 Phase 1 Compose UI（状态仪表盘、USB 接口诊断、Retroid 双屏/输入硬件诊断卡、AT 调试终端、脱敏日志视图、L1/R1 手柄切换页签）
 - [x] 编写 JUnit 4 自动化单元测试并通过 `./gradlew assembleDebug testDebugUnitTest lintDebug`
-- [x] 安装启动 Phase 1 基线至 Retroid Pocket Duo (`1b0b84fc`) 实机验证
+- [x] 安装启动 Phase 1 基线至 Retroid Pocket Duo (`1b0b****`) 实机验证
 - [x] 用户实机直连 QDC507 验证基础识别与 AT/网络就绪（`USB-001`~`USB-003` PASS）
 - [ ] 待补采 QDC507 热插拔重连与详尽描述符/AT 遥测（`USB-004`~`USB-007`）
 
