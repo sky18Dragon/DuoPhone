@@ -83,6 +83,7 @@ import com.duophone.app.stage.AppScreenState
 import com.duophone.app.stage.GtaStageState
 import com.duophone.app.stage.InteractionEvent
 import com.duophone.app.stage.SmsBannerNotice
+import com.duophone.app.stage.TopScreenPhoneMasker
 import com.duophone.app.stage.VirtualKeyId
 import com.duophone.app.ui.DIALPAD_ROWS
 import com.duophone.app.ui.formatDuration
@@ -520,6 +521,7 @@ private fun VirtualDialerPage(
     val matchedName = remember(dialBuffer, contacts) {
         if (dialBuffer.isBlank()) null else ContactPhoneMatcher.resolveDisplayName(dialBuffer, contacts)
     }
+    val maskedDial = remember(dialBuffer) { TopScreenPhoneMasker.mask(dialBuffer) }
 
     Column(
         modifier = Modifier
@@ -542,11 +544,11 @@ private fun VirtualDialerPage(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = dialBuffer.ifEmpty { " " },
+                    text = maskedDial.ifEmpty { " " },
                     color = palette.primaryText,
                     fontSize = when {
-                        dialBuffer.length > 13 -> 12.5.sp
-                        dialBuffer.length > 10 -> 15.sp
+                        maskedDial.length > 13 -> 12.5.sp
+                        maskedDial.length > 10 -> 15.sp
                         else -> 18.sp
                     },
                     fontWeight = FontWeight.Normal,
@@ -723,6 +725,7 @@ private fun VirtualDialingCallPage(
     val displayName = remember(callState.remoteNumber, contacts) {
         ContactPhoneMatcher.resolveDisplayName(callState.remoteNumber, contacts)
     }
+    val maskedRemote = remember(callState.remoteNumber) { TopScreenPhoneMasker.mask(callState.remoteNumber) }
 
     Column(
         modifier = Modifier
@@ -752,7 +755,7 @@ private fun VirtualDialingCallPage(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = displayName ?: callState.remoteNumber.ifBlank { "Unknown" },
+                text = displayName ?: maskedRemote.ifBlank { "Unknown" },
                 color = palette.primaryText,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
@@ -763,7 +766,7 @@ private fun VirtualDialingCallPage(
             if (displayName != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = callState.remoteNumber,
+                    text = maskedRemote,
                     color = palette.secondaryText,
                     fontSize = 7.2.sp,
                     maxLines = 1,
@@ -823,6 +826,7 @@ private fun VirtualIncomingCallPage(
     val displayName = remember(callState.remoteNumber, contacts) {
         ContactPhoneMatcher.resolveDisplayName(callState.remoteNumber, contacts)
     }
+    val maskedRemote = remember(callState.remoteNumber) { TopScreenPhoneMasker.mask(callState.remoteNumber) }
 
     Column(
         modifier = Modifier
@@ -852,7 +856,7 @@ private fun VirtualIncomingCallPage(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = displayName ?: callState.remoteNumber.ifBlank { "Incoming" },
+                text = displayName ?: maskedRemote.ifBlank { "Incoming" },
                 color = palette.primaryText,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
@@ -863,7 +867,7 @@ private fun VirtualIncomingCallPage(
             if (callState.remoteNumber.isNotBlank()) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = callState.remoteNumber,
+                    text = maskedRemote,
                     color = palette.secondaryText,
                     fontSize = 7.2.sp,
                     maxLines = 1,
@@ -936,6 +940,7 @@ private fun VirtualInCallPage(
     val displayName = remember(callState.remoteNumber, contacts) {
         ContactPhoneMatcher.resolveDisplayName(callState.remoteNumber, contacts)
     }
+    val maskedRemote = remember(callState.remoteNumber) { TopScreenPhoneMasker.mask(callState.remoteNumber) }
 
     Column(
         modifier = Modifier
@@ -957,7 +962,7 @@ private fun VirtualInCallPage(
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text = displayName ?: callState.remoteNumber.ifBlank { "Active Call" },
+                text = displayName ?: maskedRemote.ifBlank { "Active Call" },
                 color = palette.primaryText,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
@@ -1094,7 +1099,7 @@ private fun VirtualSmsPage(
         if (activeAddress == null || stageState.isComposingNewSms) null
         else ContactPhoneMatcher.resolveDisplayName(activeAddress, contacts)
     }
-    val headerTitle = displayName ?: activeAddress ?: "Messages"
+    val headerTitle = displayName ?: activeAddress?.let { TopScreenPhoneMasker.mask(it) } ?: "Messages"
 
     Column(
         modifier = Modifier
@@ -1180,7 +1185,7 @@ private fun VirtualSmsPage(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         text = if (stageState.isComposingNewSms) {
-                            "To: ${stageState.smsDraftNumber.ifBlank { "..." }}"
+                            "To: ${TopScreenPhoneMasker.mask(stageState.smsDraftNumber).ifBlank { "..." }}"
                         } else {
                             "No messages yet"
                         },
@@ -1416,7 +1421,7 @@ private fun VirtualSmsBanner(palette: VirtualPhonePalette, banner: SmsBannerNoti
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = banner.displayName ?: banner.address,
+                text = banner.displayName ?: TopScreenPhoneMasker.mask(banner.address),
                 color = palette.primaryText,
                 fontSize = 7.5.sp,
                 fontWeight = FontWeight.Bold,

@@ -29,6 +29,13 @@ val hasReleaseSigning = !releaseStoreFilePath.isNullOrBlank() &&
     !releaseKeyAlias.isNullOrBlank() &&
     !releaseKeyPassword.isNullOrBlank()
 
+val pocketUi = providers.gradleProperty("pocketUi").orElse("compose").get()
+require(pocketUi in setOf("compose", "top")) {
+    "pocketUi must be compose or top. dual is blocked: PocketJS v0.12.0 has process-global runtime/UI."
+}
+val pocketNativeDir = rootProject.layout.projectDirectory.dir(".pocket-build/jniLibs")
+val pocketAssetsDir = rootProject.layout.projectDirectory.dir(".pocket-build/assets")
+
 android {
     namespace = "com.duophone.app"
     compileSdk = 36
@@ -41,6 +48,11 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    if (pocketUi == "top") {
+        sourceSets.getByName("debug").jniLibs.srcDir(pocketNativeDir)
+        sourceSets.getByName("debug").assets.srcDir(pocketAssetsDir)
     }
 
     signingConfigs {
@@ -59,6 +71,8 @@ android {
 
     buildTypes {
         release {
+            buildConfigField("String", "POCKET_UI", "\"compose\"")
+            buildConfigField("boolean", "POCKET_FAIL_INIT", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
@@ -71,6 +85,10 @@ android {
             )
         }
         debug {
+            buildConfigField("String", "POCKET_UI", "\"$pocketUi\"")
+            buildConfigField("boolean", "POCKET_FAIL_INIT", providers.gradleProperty("pocketFailInit").orElse("false").get().also {
+                require(it == "true" || it == "false")
+            })
             isMinifyEnabled = false
         }
     }
@@ -110,6 +128,20 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.kotlinx.coroutines.android)
 
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.json:json:20240303")
     testImplementation(libs.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
+}
+
+val buildPocketNative by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Build pinned PocketJS ARM64 core, JNI adapter and UI bundle"
+    workingDir(rootProject.projectDir)
+    commandLine("bash", "scripts/build-pocketjs.sh")
+}
+if (pocketUi == "top") {
+    tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(buildPocketNative) }
 }

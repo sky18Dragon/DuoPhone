@@ -61,6 +61,7 @@ import com.duophone.app.data.ContactRecord
 import com.duophone.app.data.ContactSource
 import com.duophone.app.domain.CallUiPhase
 import com.duophone.app.domain.CallUiState
+import com.duophone.app.stage.TopScreenPhoneMasker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -129,6 +130,7 @@ fun CallTabScreen(
                         value = editingPhone,
                         onValueChange = { editingPhone = it },
                         singleLine = true,
+                        visualTransformation = PhoneMaskVisualTransformation,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         label = { Text("电话号码") },
                     )
@@ -343,7 +345,7 @@ fun CallTabScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
-                                            text = "${if (log.direction == CallDirection.INCOMING) "↙ " else "↗ "}${matchedName ?: log.number}",
+                                            text = "${if (log.direction == CallDirection.INCOMING) "↙ " else "↗ "}${matchedName ?: TopScreenPhoneMasker.mask(log.number)}",
                                             color = DuoTextPrimary,
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 12.sp,
@@ -360,7 +362,7 @@ fun CallTabScreen(
                                     }
                                     if (matchedName != null) {
                                         Text(
-                                            text = log.number,
+                                            text = TopScreenPhoneMasker.mask(log.number),
                                             color = DuoCyan,
                                             fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace,
@@ -513,7 +515,7 @@ fun CallTabScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
-                                            text = contact.phone,
+                                            text = TopScreenPhoneMasker.mask(contact.phone),
                                             color = DuoTextSecondary,
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
@@ -608,6 +610,7 @@ internal fun CompactLandscapeDialer(
                 value = dialInput,
                 onValueChange = onDialInputChange,
                 singleLine = true,
+                visualTransformation = PhoneMaskVisualTransformation,
                 textStyle = TextStyle(
                     color = DuoTextPrimary,
                     fontSize = 18.sp,
@@ -792,8 +795,9 @@ private fun ActiveCallPanel(
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
                 )
+                val maskedRemote = TopScreenPhoneMasker.mask(callState.remoteNumber)
                 Text(
-                    text = callerDisplayName ?: callState.remoteNumber.ifBlank { "未知号码" },
+                    text = callerDisplayName ?: maskedRemote.ifBlank { "未知号码" },
                     color = DuoTextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
@@ -802,7 +806,7 @@ private fun ActiveCallPanel(
                 )
                 if (callerDisplayName != null && callState.remoteNumber.isNotBlank()) {
                     Text(
-                        text = callState.remoteNumber,
+                        text = maskedRemote,
                         color = DuoTextSecondary,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
@@ -917,15 +921,16 @@ private fun ActiveCallPanel(
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
             )
+            val maskedRemote = TopScreenPhoneMasker.mask(callState.remoteNumber)
             Text(
-                text = callerDisplayName ?: callState.remoteNumber.ifBlank { "未知号码" },
+                text = callerDisplayName ?: maskedRemote.ifBlank { "未知号码" },
                 color = DuoTextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
             )
             if (callerDisplayName != null && callState.remoteNumber.isNotBlank()) {
                 Text(
-                    text = callState.remoteNumber,
+                    text = maskedRemote,
                     color = DuoCyan,
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,

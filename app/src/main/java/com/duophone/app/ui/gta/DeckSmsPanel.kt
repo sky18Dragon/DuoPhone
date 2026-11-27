@@ -48,6 +48,8 @@ import com.duophone.app.data.SmsDirection
 import com.duophone.app.data.SmsRecord
 import com.duophone.app.data.SmsThreadSummary
 import com.duophone.app.stage.GtaStageState
+import com.duophone.app.stage.TopScreenPhoneMasker
+import com.duophone.app.ui.PhoneMaskVisualTransformation
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -193,7 +195,7 @@ fun DeckSmsPanel(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
-                                        text = displayName ?: thread.address,
+                                        text = displayName ?: TopScreenPhoneMasker.mask(thread.address),
                                         color = palette.textPrimary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
@@ -262,6 +264,7 @@ fun DeckSmsPanel(
                     onValueChange = onUpdateDraftNumber,
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    visualTransformation = PhoneMaskVisualTransformation,
                     label = { Text("收件号码") },
                 )
                 if (contacts.isNotEmpty()) {
@@ -328,8 +331,9 @@ fun DeckSmsPanel(
                     }
                 }
                 val activeName = ContactPhoneMatcher.resolveDisplayName(activeAddr, contacts)
+                val maskedActiveAddr = TopScreenPhoneMasker.mask(activeAddr)
                 Text(
-                    text = activeName?.let { "$it · $activeAddr" } ?: activeAddr,
+                    text = activeName?.let { "$it · $maskedActiveAddr" } ?: maskedActiveAddr,
                     color = palette.textPrimary,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 13.sp,

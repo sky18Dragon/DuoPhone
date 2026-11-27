@@ -46,6 +46,7 @@ import com.duophone.app.data.ContactRecord
 import com.duophone.app.data.SmsDirection
 import com.duophone.app.data.SmsRecord
 import com.duophone.app.data.SmsThreadSummary
+import com.duophone.app.stage.TopScreenPhoneMasker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -166,8 +167,9 @@ fun SmsTabScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     val threadDisplayName = ContactPhoneMatcher.resolveDisplayName(thread.address, contacts)
+                                    val maskedAddr = TopScreenPhoneMasker.mask(thread.address)
                                     Text(
-                                        text = threadDisplayName?.let { "$it · ${thread.address}" } ?: thread.address,
+                                        text = threadDisplayName?.let { "$it · $maskedAddr" } ?: maskedAddr,
                                         color = DuoTextPrimary,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 13.sp,
@@ -235,6 +237,7 @@ fun SmsTabScreen(
                     onValueChange = { composeNumber = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    visualTransformation = PhoneMaskVisualTransformation,
                     label = { Text("收件号码（如 +8613800138000）") },
                 )
                 OutlinedTextField(
@@ -270,6 +273,7 @@ fun SmsTabScreen(
                     messages.filter { it.address == activeAddr }.sortedBy { it.timestampMs }
                 }
                 val activeDisplayName = ContactPhoneMatcher.resolveDisplayName(activeAddr, contacts)
+                val maskedActiveAddr = TopScreenPhoneMasker.mask(activeAddr)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -277,9 +281,9 @@ fun SmsTabScreen(
                 ) {
                     Text(
                         text = if (activeDisplayName != null) {
-                            "会话：$activeDisplayName ($activeAddr · ${threadMessages.size} 条)"
+                            "会话：$activeDisplayName ($maskedActiveAddr · ${threadMessages.size} 条)"
                         } else {
-                            "会话：$activeAddr (${threadMessages.size} 条)"
+                            "会话：$maskedActiveAddr (${threadMessages.size} 条)"
                         },
                         color = DuoAccent,
                         fontWeight = FontWeight.SemiBold,

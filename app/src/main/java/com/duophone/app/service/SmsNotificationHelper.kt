@@ -13,6 +13,7 @@ import com.duophone.app.R
 import com.duophone.app.data.SmsRecord
 import com.duophone.app.diagnostics.DuoLogger
 import com.duophone.app.diagnostics.LogCategory
+import com.duophone.app.stage.TopScreenPhoneMasker
 
 object SmsNotificationHelper {
     private const val CHANNEL_SMS = "duo_sms_incoming"
@@ -69,7 +70,8 @@ object SmsNotificationHelper {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val senderLabel = if (!displayName.isNullOrBlank()) "$displayName (${sms.address})" else sms.address
+        val maskedAddr = TopScreenPhoneMasker.mask(sms.address)
+        val senderLabel = if (!displayName.isNullOrBlank()) "$displayName ($maskedAddr)" else maskedAddr
         val title = if (!sms.otpCode.isNullOrBlank()) {
             "新短信 · 验证码 ${sms.otpCode} · $senderLabel"
         } else {
@@ -77,7 +79,7 @@ object SmsNotificationHelper {
         }
 
         val replyRemoteInput = RemoteInput.Builder(CallActionReceiver.KEY_SMS_REPLY)
-            .setLabel("快捷回复 ${displayName ?: sms.address}")
+            .setLabel("快捷回复 ${displayName ?: maskedAddr}")
             .build()
         val replyIntent = Intent(context, CallActionReceiver::class.java).apply {
             action = CallActionReceiver.ACTION_REPLY_SMS
@@ -163,10 +165,11 @@ object SmsNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val maskedNumber = TopScreenPhoneMasker.mask(number)
         val callerText = when {
-            !displayName.isNullOrBlank() && number.isNotBlank() -> "$displayName · $number"
+            !displayName.isNullOrBlank() && number.isNotBlank() -> "$displayName · $maskedNumber"
             !displayName.isNullOrBlank() -> displayName
-            number.isNotBlank() -> number
+            number.isNotBlank() -> maskedNumber
             else -> "未知号码"
         }
 
@@ -223,10 +226,11 @@ object SmsNotificationHelper {
             hangupIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val maskedNumber = TopScreenPhoneMasker.mask(number)
         val callerText = when {
-            !displayName.isNullOrBlank() && number.isNotBlank() -> "$displayName · $number"
+            !displayName.isNullOrBlank() && number.isNotBlank() -> "$displayName · $maskedNumber"
             !displayName.isNullOrBlank() -> displayName
-            number.isNotBlank() -> number
+            number.isNotBlank() -> maskedNumber
             else -> "未知号码"
         }
 

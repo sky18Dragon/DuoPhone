@@ -423,7 +423,7 @@ fun TopStageScreen(
 }
 
 @Composable
-private fun GtaTopRightHud(
+internal fun GtaTopRightHud(
     modemState: ModemUiState,
     modifier: Modifier = Modifier,
 ) {
@@ -548,7 +548,7 @@ private fun BankShieldHudIcon(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HandheldControlsHud(
+internal fun HandheldControlsHud(
     screenState: AppScreenState,
     modifier: Modifier = Modifier,
 ) {

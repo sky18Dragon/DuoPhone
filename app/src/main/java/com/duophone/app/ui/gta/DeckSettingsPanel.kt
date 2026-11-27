@@ -50,6 +50,7 @@ fun DeckSettingsPanel(
     onRescanAssets: () -> Unit,
     onReplayOpening: () -> Unit,
     onOpenLegacyDiagnostics: () -> Unit,
+    showLegacyDiagnosticsEntry: Boolean = true,
     onRelaunchDualDisplay: (() -> Unit)? = null,
 ) {
     val palette = LocalGtaDeckPalette.current
@@ -279,22 +280,41 @@ fun DeckSettingsPanel(
                     fontSize = 11.sp,
                 )
                 Spacer(Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(palette.surfaceElevated)
-                        .border(1.dp, palette.accentTeal, RoundedCornerShape(7.dp))
-                        .clickable(onClick = onOpenLegacyDiagnostics),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "进入高级硬件与 AT 诊断工作台",
-                        color = palette.accentTeal,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
+                if (showLegacyDiagnosticsEntry) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(palette.surfaceElevated)
+                            .border(1.dp, palette.accentTeal, RoundedCornerShape(7.dp))
+                            .clickable(onClick = onOpenLegacyDiagnostics),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "进入高级硬件与 AT 诊断工作台",
+                            color = palette.accentTeal,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(palette.surfaceHighlight)
+                            .border(1.dp, palette.border, RoundedCornerShape(7.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "工程诊断工作台暂不可用",
+                            color = palette.textSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(

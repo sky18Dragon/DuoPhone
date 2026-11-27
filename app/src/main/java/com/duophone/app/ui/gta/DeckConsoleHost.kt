@@ -428,6 +428,7 @@ fun DeckConsoleHost(
                     onExitSingleScreenDeck?.invoke()
                 },
                 onOpenLegacyDiagnostics = { app.gtaStageCoordinator.setShowLegacyDiagnostics(true) },
+                showLegacyDiagnosticsEntry = true,
                 onRelaunchDualDisplay = onRelaunchDualDisplay,
                 onExitSingleScreenDeck = onExitSingleScreenDeck,
             )

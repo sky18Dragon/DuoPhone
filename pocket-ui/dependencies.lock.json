@@ -1,0 +1,20 @@
+{
+  "pocketjs": {
+    "tag": "v0.12.0",
+    "commit": "d3f0be0c7739ea704ca25d8b5158581bb176abc6",
+    "url": "https://github.com/pocket-nexus/pocketjs.git",
+    "license": "MIT"
+  },
+  "quickjs": {
+    "version": "2026-06-04",
+    "commit": "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b",
+    "url": "https://github.com/pocket-stack/quickjs-rs.git"
+  },
+  "rust": "nightly-2026-07-02",
+  "ndk": "28.2.13676358",
+  "target": "aarch64-linux-android",
+  "androidApi": 26,
+  "framework": "v0.12.0 low-level ui host contract; no npm runtime dependencies",
+  "pythonPillow": "11.3.0",
+  "typescript": "5.9.3"
+}

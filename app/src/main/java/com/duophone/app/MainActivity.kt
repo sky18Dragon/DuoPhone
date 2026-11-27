@@ -171,21 +171,26 @@ class MainActivity : ComponentActivity() {
                     val smsThreads = remember(smsMessages) { app.smsRepository.buildThreads(smsMessages) }
                     val contacts by app.contactRepository.contacts.collectAsStateWithLifecycle()
 
-                    TopStageScreen(
-                        stageState = stageState,
-                        events = app.gtaStageCoordinator.events,
-                        modemState = modemState,
-                        callState = callState,
-                        audioState = audioState,
-                        smsMessages = smsMessages,
-                        smsThreads = smsThreads,
-                        contacts = contacts,
-                        onOpeningFinished = { app.gtaStageCoordinator.onOpeningFinished() },
-                        onSkipOpening = { app.gtaStageCoordinator.skipOpening() },
-                        hasSecondaryDisplay = hasSecondaryDisplay,
-                        singleScreenPreviewDeck = singleScreenShowDeck,
-                        onToggleSingleScreenDeck = { singleScreenShowDeck = !singleScreenShowDeck },
-                    )
+                    com.duophone.app.pocket.PocketTopContent(
+                        app = app,
+                        onOpenSingleScreenDeck = if (!hasSecondaryDisplay) ({ singleScreenShowDeck = true }) else null,
+                    ) {
+                        TopStageScreen(
+                            stageState = stageState,
+                            events = app.gtaStageCoordinator.events,
+                            modemState = modemState,
+                            callState = callState,
+                            audioState = audioState,
+                            smsMessages = smsMessages,
+                            smsThreads = smsThreads,
+                            contacts = contacts,
+                            onOpeningFinished = { app.gtaStageCoordinator.onOpeningFinished() },
+                            onSkipOpening = { app.gtaStageCoordinator.skipOpening() },
+                            hasSecondaryDisplay = hasSecondaryDisplay,
+                            singleScreenPreviewDeck = singleScreenShowDeck,
+                            onToggleSingleScreenDeck = { singleScreenShowDeck = !singleScreenShowDeck },
+                        )
+                    }
                 }
             }
         }

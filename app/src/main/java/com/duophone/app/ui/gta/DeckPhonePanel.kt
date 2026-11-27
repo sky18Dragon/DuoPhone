@@ -55,8 +55,10 @@ import com.duophone.app.data.ContactRecord
 import com.duophone.app.data.ContactSource
 import com.duophone.app.domain.CallUiPhase
 import com.duophone.app.domain.CallUiState
+import com.duophone.app.stage.TopScreenPhoneMasker
 import com.duophone.app.ui.CompactDtmfGrid
 import com.duophone.app.ui.DIALPAD_ROWS
+import com.duophone.app.ui.PhoneMaskVisualTransformation
 import com.duophone.app.ui.formatDuration
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -134,6 +136,7 @@ fun DeckPhonePanel(
                         value = editingPhone,
                         onValueChange = { editingPhone = it },
                         singleLine = true,
+                        visualTransformation = PhoneMaskVisualTransformation,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         label = { Text("电话号码") },
                     )
@@ -218,61 +221,6 @@ fun DeckPhonePanel(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                }
-
-                // Number readout container matching top-stage minimalism
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.canvas)
-                        .border(1.dp, palette.borderStrong, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        if (dialBuffer.isEmpty()) {
-                            Text(
-                                text = "输入号码",
-                                color = palette.textSecondary.copy(alpha = 0.7f),
-                                fontSize = 13.sp,
-                            )
-                        }
-                        BasicTextField(
-                            value = dialBuffer,
-                            onValueChange = onSetDialBuffer,
-                            singleLine = true,
-                            textStyle = TextStyle(
-                                color = palette.textPrimary,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                            ),
-                            cursorBrush = SolidColor(palette.accentBlue),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (dialBuffer.isNotEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(palette.surfaceHighlight)
-                                .clickable(onClick = onDialClear)
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        ) {
-                            Text(
-                                text = "清空",
-                                color = palette.textSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
                     }
                 }
 
@@ -486,7 +434,7 @@ fun DeckPhonePanel(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        text = "${if (log.direction == CallDirection.INCOMING) "↙ " else "↗ "}${name ?: log.number}",
+                                        text = "${if (log.direction == CallDirection.INCOMING) "↙ " else "↗ "}${name ?: TopScreenPhoneMasker.mask(log.number)}",
                                         color = palette.textPrimary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
@@ -602,7 +550,7 @@ fun DeckPhonePanel(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    text = contact.phone,
+                                    text = TopScreenPhoneMasker.mask(contact.phone),
                                     color = palette.textSecondary,
                                     fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace,
@@ -732,7 +680,7 @@ private fun DeckActiveCallPanel(
                 fontSize = 13.sp,
             )
             Text(
-                text = callerDisplayName ?: callState.remoteNumber.ifBlank { "未知号码" },
+                text = callerDisplayName ?: TopScreenPhoneMasker.mask(callState.remoteNumber).ifBlank { "未知号码" },
                 color = palette.textPrimary,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,

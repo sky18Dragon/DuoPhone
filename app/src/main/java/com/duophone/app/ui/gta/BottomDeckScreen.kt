@@ -46,6 +46,7 @@ import com.duophone.app.stage.DeckMenu
 import com.duophone.app.stage.GtaStageState
 import com.duophone.app.stage.PhoneOverlayConfig
 import com.duophone.app.stage.StageThemeMode
+import com.duophone.app.stage.TopScreenPhoneMasker
 
 @Composable
 fun BottomDeckScreen(
@@ -102,6 +103,7 @@ fun BottomDeckScreen(
     onRescanAssets: () -> Unit,
     onReplayOpening: () -> Unit,
     onOpenLegacyDiagnostics: () -> Unit,
+    showLegacyDiagnosticsEntry: Boolean = true,
     onRelaunchDualDisplay: (() -> Unit)? = null,
     onExitSingleScreenDeck: (() -> Unit)? = null,
 ) {
@@ -359,7 +361,7 @@ fun BottomDeckScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "${callState.phase.label} · ${callState.remoteNumber}",
+                        text = "${callState.phase.label} · ${TopScreenPhoneMasker.mask(callState.remoteNumber)}",
                         color = palette.accentGreen,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -436,6 +438,7 @@ fun BottomDeckScreen(
                         onRescanAssets = onRescanAssets,
                         onReplayOpening = onReplayOpening,
                         onOpenLegacyDiagnostics = onOpenLegacyDiagnostics,
+                        showLegacyDiagnosticsEntry = showLegacyDiagnosticsEntry,
                         onRelaunchDualDisplay = onRelaunchDualDisplay,
                     )
                 }
