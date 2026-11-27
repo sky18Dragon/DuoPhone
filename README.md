@@ -4,13 +4,14 @@
 
 [![Platform](https://img.shields.io/badge/Android-16%20(SDK%2036)-34B864?style=flat-square)](https://developer.android.com/)
 [![Language](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square)](https://kotlinlang.org/)
+[![PocketJS](https://img.shields.io/badge/Top%20UI-PocketJS%20v0.12.0-10B981?style=flat-square)](docs/pocketjs/README.md)
 [![Root](https://img.shields.io/badge/Root-Not%20Required-0EA5E9?style=flat-square)](#核心架构与硬件支持)
 [![Built with Gemini](https://img.shields.io/badge/Built%20with-Google%20Gemini-4285F4?style=flat-square)](#-使用-gemini-开发)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B?style=flat-square)](LICENSE)
 
 面向 **Retroid Pocket Duo** 双屏游戏掌机（Android 16 / SDK 36）与 **大疆第一代 4G 增强图传模块（DJI Cellular Dongle Gen 1 / QDC507 / MDM9207）** 的独立 **非 Root** 蜂窝通信终端应用。
 
-无需刷写模块固件、无需 Root 掌机系统，通过 USB Type-C OTG 即可在掌机上实现完整的 **4G 语音通话、双向中文/长短信收发、联系人来电匹配、手柄快捷操控**，以及参考 **GTA 6（Leonida / Vice City）** 视觉风格打造的双屏沉浸式交互体验。
+无需刷写模块固件、无需 Root 掌机系统，通过 USB Type-C OTG 即可在掌机上实现完整的 **4G 语音通话、双向中文/长短信收发、联系人来电匹配、手柄快捷操控**，以及参考 **GTA 6（Leonida / Vice City）** 视觉风格打造的双屏沉浸式交互体验（上屏支持默认 Jetpack Compose 与基于 **PocketJS `v0.12.0` + QuickJS + Rust `ui-cabi` + OpenGL ES 2.0 离屏 FBO 透视合成** 的原生渲染引擎 `-PpocketUi=top`）。
 
 ---
 
@@ -39,6 +40,24 @@
 全套生成 `mdpi` ~ `xxxhdpi` 桌面图标及 Android 13+ Monochrome 单色矢量层，实机适配圆形、圆角矩形及掌机桌面环境：
 
 ![GTA 6 Vice Sunset 应用图标](docs/images/app_icon_showcase.jpg)
+
+---
+
+## 🧱 技术栈与 PocketJS 原生渲染架构
+
+| 层级 / 模块 | 核心技术与版本 | 说明 |
+| --- | --- | --- |
+| **Android 平台与构建** | Kotlin `2.2.10`、AGP `9.0.1`、Gradle `9.1.0`、OpenJDK `25` | `compileSdk 36` / `targetSdk 36` / `minSdk 26`，开启 Release R8 压缩与资源裁剪 |
+| **UI 与双屏架构** | Jetpack Compose（BOM `2025.02.00`）、Material 3、`activity-compose 1.10.1`、`lifecycle 2.8.7` | `DisplayManager` 异显调度（`Display #0` 上屏舞台 + `Display #2` 下屏控制台），支持单屏回退 |
+| **视频与音效交互** | AndroidX Media3 ExoPlayer `1.5.1`、`AudioTrack` UI 合成音效 | 开场视频播放、手柄音效与触觉反馈 |
+| **可选上屏原生引擎 (`-PpocketUi=top`)** | **PocketJS `v0.12.0`**（Rust `ui-cabi`，`nightly-2026-07-02`）、QuickJS `2026-06-04`、NDK `28.2.13676358` C/JNI、OpenGL ES 2.0 | 双通道离屏 FBO（`720×1280`）+ `3×3` 透视单应性合成 + 圆角 SDF + 60fps 呼吸/按键回弹 + 逆透视触控；Python 3 / Pillow `11.3.0` 烘焙 Inter 字库，TypeScript `5.9.3` 类型校验 |
+| **并发与数据持久化** | Kotlin Coroutines `1.10.1`（`StateFlow` / `SharedFlow`）、Android 原生 SQLite（`SQLiteOpenHelper` v2） | 无锁串行化 AT 状态流；本地持久化短信、通话记录、通讯录与按 IMEI 备份的 USB 配置 |
+| **硬件通信与语音 DSP** | Android USB Host API、Clean-room USB ADB 传输层、3GPP TS 23.040 PDU 编解码、`AudioRecord` / `AudioTrack` / `AudioDeviceCallback` | 安全接口探测、`atEngine` 串行队列 + URC 分流、`80–3400 Hz` 带通滤波、`AEC`/`NS`/`AGC`、NLP 回声压制 |
+| **自动化测试与静态检查** | JUnit 4 `4.13.2` + `kotlinx-coroutines-test`、Node `node:test`、AndroidX Instrumentation、Android Lint | **70 项 JVM 单元测试** + **8 项 PocketJS 合同测试** + **2 项真机 Instrumentation 冒烟测试** + 0 Error Lint |
+
+### PocketJS 上屏原生引擎 (`-PpocketUi=top`)
+- **渲染架构**：由 Rust `ui-cabi` + QuickJS（`32 MiB` 堆上限）+ NDK C/JNI + `GLSurfaceView` OpenGL ES 2.0 组成双通道 FBO 透视合成管线——Pass 1 将 `pocket-ui/src/top.js` 离屏渲染至 `720×1280` FBO，Pass 2 以 `3×3` 单应性矩阵、圆角 SDF 与 60fps 手持呼吸/按键回弹将其自然贴合到手持智能手机背景图上，并同步执行逆透视触控坐标映射。
+- **全功能与高可用设计**：已打通下屏与上屏 `CALL` / `ANSWER` / `HANGUP` / `SEND` 及诊断通道；若动态库加载、初始化或首帧渲染超时，自动无缝回退 Compose 舞台。由于上游 PocketJS `v0.12.0` 核心采用进程级全局单例，`-PpocketUi=dual` 保持明确拒绝，架构与验收详情见 [`docs/pocketjs/README.md`](docs/pocketjs/README.md)。
 
 ---
 
@@ -76,20 +95,6 @@
   - 支持 USB UAC + 本地麦克风/听筒/扬声器/3.5mm 有线耳机/蓝牙耳机动态热插拔自动路由。
   - 内置 `80 Hz` 高通 + `3400 Hz` 低通带通滤波、语音增益调节、硬件 `AEC`/`NS`/`AGC` 与免提回声压制（NLP）。
   - 系统通知栏支持来电直达 **接听 / 拒接 / 挂断**，响铃独立锁定掌机本地音频输出，不被 UAC 设备劫持。
-
----
-
-## 🧱 技术栈
-
-| 层级 / 模块 | 核心技术与版本 | 说明 |
-| --- | --- | --- |
-| **Android 平台与构建** | Kotlin `2.2.10`、AGP `9.0.1`、Gradle `9.1.0`、OpenJDK `25` | `compileSdk 36` / `targetSdk 36` / `minSdk 26`，开启 Release R8 压缩与资源裁剪 |
-| **UI 与双屏架构** | Jetpack Compose（BOM `2025.02.00`）、Material 3、`activity-compose 1.10.1`、`lifecycle 2.8.7` | `DisplayManager` 异显调度（`Display #0` 上屏舞台 + `Display #2` 下屏控制台），支持单屏回退 |
-| **视频与音效交互** | AndroidX Media3 ExoPlayer `1.5.1`、`AudioTrack` UI 合成音效 | 开场视频播放、手柄音效与触觉反馈 |
-| **可选上屏原生引擎 (`-PpocketUi=top`)** | PocketJS `v0.12.0`（Rust `ui-cabi`，`nightly-2026-07-02`）、QuickJS `2026-06-04`、NDK `28.2.13676358` C/JNI、OpenGL ES 2.0 | 双通道离屏 FBO（`720×1280`）+ `3×3` 透视单应性合成 + 圆角 SDF + 60fps 呼吸/按键回弹 + 逆透视触控；Python 3 / Pillow `11.3.0` 烘焙 Inter 字库，TypeScript `5.9.3` 类型校验 |
-| **并发与数据持久化** | Kotlin Coroutines `1.10.1`（`StateFlow` / `SharedFlow`）、Android 原生 SQLite（`SQLiteOpenHelper` v2） | 无锁串行化 AT 状态流；本地持久化短信、通话记录、通讯录与按 IMEI 备份的 USB 配置 |
-| **硬件通信与语音 DSP** | Android USB Host API、Clean-room USB ADB 传输层、3GPP TS 23.040 PDU 编解码、`AudioRecord` / `AudioTrack` / `AudioDeviceCallback` | 安全接口探测、`atEngine` 串行队列 + URC 分流、`80–3400 Hz` 带通滤波、`AEC`/`NS`/`AGC`、NLP 回声压制 |
-| **自动化测试与静态检查** | JUnit 4 `4.13.2` + `kotlinx-coroutines-test`、Node `node:test`、AndroidX Instrumentation、Android Lint | **70 项 JVM 单元测试** + **8 项 PocketJS 合同测试** + **2 项真机 Instrumentation 冒烟测试** + 0 Error Lint |
 
 ### 4. 3GPP PDU 短信与验证码识别
 - **中英文与长短信**：原生 3GPP TS 23.040 PDU 编解码，支持 GSM 7-bit、UCS2 中文及 Emoji UTF-16 代理对安全切分、长短信 UDH 乱序重组与字母发件人解析。

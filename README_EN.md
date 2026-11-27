@@ -4,13 +4,14 @@
 
 [![Platform](https://img.shields.io/badge/Android-16%20(SDK%2036)-34B864?style=flat-square)](https://developer.android.com/)
 [![Language](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square)](https://kotlinlang.org/)
+[![PocketJS](https://img.shields.io/badge/Top%20UI-PocketJS%20v0.12.0-10B981?style=flat-square)](docs/pocketjs/README.md)
 [![Root](https://img.shields.io/badge/Root-Not%20Required-0EA5E9?style=flat-square)](#hardware-compatibility--non-root-design)
 [![Built with Gemini](https://img.shields.io/badge/Built%20with-Google%20Gemini-4285F4?style=flat-square)](#-built-with-gemini)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B?style=flat-square)](LICENSE)
 
 A standalone, **non-root** Android cellular communication terminal built for the **Retroid Pocket Duo** dual-screen handheld (Android 16 / SDK 36) and the **DJI Cellular Dongle Gen 1 (QDC507 / MDM9207)** 4G USB modem.
 
-Without rooting the handheld or flashing custom firmware onto the dongle, Duo Phone delivers **VoLTE voice calling, bidirectional 3GPP PDU SMS (Unicode & multipart), contact caller-ID matching, hardware gamepad controls**, and an immersive **GTA 6 (Vice City / Leonida) inspired dual-screen UI**.
+Without rooting the handheld or flashing custom firmware onto the dongle, Duo Phone delivers **VoLTE voice calling, bidirectional 3GPP PDU SMS (Unicode & multipart), contact caller-ID matching, hardware gamepad controls**, and an immersive **GTA 6 (Vice City / Leonida) inspired dual-screen UI** — supporting both Jetpack Compose and the optional **PocketJS `v0.12.0` (`QuickJS` + `Rust ui-cabi` + `OpenGL ES 2.0` offscreen FBO perspective compositor)** native top-screen engine (`-PpocketUi=top`).
 
 ---
 
@@ -42,6 +43,24 @@ Includes full `mdpi`–`xxxhdpi` adaptive foreground/background/legacy assets pl
 
 ---
 
+## 🧱 Tech Stack & PocketJS Native Renderer
+
+| Layer / Domain | Core Technologies & Versions | Notes |
+| --- | --- | --- |
+| **Android Platform & Build** | Kotlin `2.2.10`, AGP `9.0.1`, Gradle `9.1.0`, OpenJDK `25` | `compileSdk 36` / `targetSdk 36` / `minSdk 26`; Release R8 minification & resource shrinking |
+| **UI & Dual-Display** | Jetpack Compose (`BOM 2025.02.00`), Material 3, `activity-compose 1.10.1`, `lifecycle 2.8.7` | `DisplayManager` dual-display dispatch (`Display #0` Top + `Display #2` Deck) with single-screen fallback |
+| **Media & Tactile SFX** | AndroidX Media3 ExoPlayer `1.5.1`, `AudioTrack` synthesized SFX | Opening video playback, controller cues, and haptic feedback |
+| **Optional Native Top Renderer (`-PpocketUi=top`)** | **PocketJS `v0.12.0`** (Rust `ui-cabi`, `nightly-2026-07-02`), QuickJS `2026-06-04`, NDK `28.2.13676358` C/JNI, OpenGL ES 2.0 | 2-pass `720×1280` FBO + `3×3` perspective homography, rounded SDF, 60fps breathing/recoil, inverse-perspective touch; Pillow `11.3.0` baked Inter atlases, TypeScript `5.9.3` |
+| **Concurrency & Storage** | Kotlin Coroutines `1.10.1` (`StateFlow` / `SharedFlow`), Android SQLite (`SQLiteOpenHelper` v2) | Serialized AT/URC state pipeline; local SMS, call log, contact cache & IMEI-indexed USB config backups |
+| **Hardware Comm & Audio DSP** | Android USB Host API, clean-room USB ADB transport, 3GPP TS 23.040 PDU codec, `AudioRecord` / `AudioTrack` / `AudioDeviceCallback` | Safe USB interface probing, `80–3400 Hz` bandpass filter, `AEC`/`NS`/`AGC`, speaker NLP echo suppression |
+| **Testing & Static Analysis** | JUnit 4 `4.13.2` + `kotlinx-coroutines-test`, Node `node:test`, AndroidX Instrumentation, Android Lint | **70 JVM unit tests** + **8 PocketJS contract tests** + **2 device instrumentation smoke tests** + 0-error Lint |
+
+### PocketJS Top-Screen Engine (`-PpocketUi=top`)
+- **Dual-Pass GLES2 Pipeline**: Combines Rust `ui-cabi` + QuickJS (`32 MiB` heap) + NDK C/JNI inside `GLSurfaceView`. Pass 1 renders `pocket-ui/src/top.js` into a `720×1280` offscreen FBO; Pass 2 projects it onto the Day/Night handheld backdrop using a `3×3` homography matrix, rounded-corner SDF, 60fps handheld breathing/key-press recoil, and inverse-perspective touch mapping.
+- **Full Mode & Resilience**: Full 4G connection, `CALL`/`ANSWER`/`HANGUP`/`SEND`, gamepad actions, and diagnostics are unlocked, while any library-load, boot, or first-frame timeout falls back automatically to Compose. Because upstream PocketJS `v0.12.0` uses process-global singletons, `-PpocketUi=dual` stays explicitly rejected (see [`docs/pocketjs/README.md`](docs/pocketjs/README.md)).
+
+---
+
 ## 🎮 Features & Operation Guide
 
 ### Hardware Compatibility & Non-Root Design
@@ -66,20 +85,6 @@ Includes full `mdpi`–`xxxhdpi` adaptive foreground/background/legacy assets pl
 - **Full-UI & Notification Phone Masking (`TopScreenPhoneMasker` / `PhoneMaskVisualTransformation`)**: Digits 4–7 of displayed phone numbers are masked as `*` across the top screen, bottom deck, legacy diagnostics workbench, SMS banners, and system notifications (e.g., `138****5678`, `+86138****5678`), while raw numbers remain intact internally for dialing, `AT+CMGS`, contact matching, and thread routing.
 - **Side-Effect Protection**: Never auto-retries non-idempotent commands (`ATD`, `AT+CMGS`, `AT+CFUN=1,1`).
 - **Bidirectional PCM Bridge (`AndroidAudioBridge`)**: Automatic hot-plug routing across Bluetooth, 3.5mm wired headset, earpiece, and speakerphone, paired with an `80 Hz–3400 Hz` speech bandpass filter, hardware `AEC`/`NS`/`AGC`, and speakerphone NLP echo suppression. Ringtone playback is pinned to local handheld outputs so USB UAC never hijacks ringing.
-
----
-
-## 🧱 Tech Stack
-
-| Layer / Domain | Core Technologies & Versions | Notes |
-| --- | --- | --- |
-| **Android Platform & Build** | Kotlin `2.2.10`, AGP `9.0.1`, Gradle `9.1.0`, OpenJDK `25` | `compileSdk 36` / `targetSdk 36` / `minSdk 26`; Release R8 minification & resource shrinking |
-| **UI & Dual-Display** | Jetpack Compose (`BOM 2025.02.00`), Material 3, `activity-compose 1.10.1`, `lifecycle 2.8.7` | `DisplayManager` dual-display dispatch (`Display #0` Top + `Display #2` Deck) with single-screen fallback |
-| **Media & Tactile SFX** | AndroidX Media3 ExoPlayer `1.5.1`, `AudioTrack` synthesized SFX | Opening video playback, controller cues, and haptic feedback |
-| **Optional Native Top Renderer (`-PpocketUi=top`)** | PocketJS `v0.12.0` (Rust `ui-cabi`, `nightly-2026-07-02`), QuickJS `2026-06-04`, NDK `28.2.13676358` C/JNI, OpenGL ES 2.0 | 2-pass `720×1280` FBO + `3×3` perspective homography, rounded SDF, 60fps breathing/recoil, inverse-perspective touch; Pillow `11.3.0` baked Inter atlases, TypeScript `5.9.3` |
-| **Concurrency & Storage** | Kotlin Coroutines `1.10.1` (`StateFlow` / `SharedFlow`), Android SQLite (`SQLiteOpenHelper` v2) | Serialized AT/URC state pipeline; local SMS, call log, contact cache & IMEI-indexed USB config backups |
-| **Hardware Comm & Audio DSP** | Android USB Host API, clean-room USB ADB transport, 3GPP TS 23.040 PDU codec, `AudioRecord` / `AudioTrack` / `AudioDeviceCallback` | Safe USB interface probing, `80–3400 Hz` bandpass filter, `AEC`/`NS`/`AGC`, speaker NLP echo suppression |
-| **Testing & Static Analysis** | JUnit 4 `4.13.2` + `kotlinx-coroutines-test`, Node `node:test`, AndroidX Instrumentation, Android Lint | **70 JVM unit tests** + **8 PocketJS contract tests** + **2 device instrumentation smoke tests** + 0-error Lint |
 
 ### 3GPP PDU SMS & OTP Quick Actions
 - Full **3GPP TS 23.040 PDU** encoding/decoding for GSM 7-bit, UCS2 international text, UTF-16 surrogate-safe splitting, out-of-order UDH multipart reassembly, and alphanumeric sender IDs.
