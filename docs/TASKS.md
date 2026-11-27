@@ -59,3 +59,18 @@
 
 ## Phase 7：高级扩展（USB 4G 移动网络 / ECM / APN） — ⏳ 待开始
 - [ ] ECM 移动网络可行性研究、APN 配置与流量统计
+
+## 2026-11-26 PocketJS UI PoC
+- Baseline: clean main @ 0036531; assembleDebug / test / lint PASS (host environment).
+- [x] Phase A implementation/build: pinned v0.12.0 real native host, teardown (`AndroidView.onRelease`) and fault-injection fallback verified.
+- [x] Phase B implementation & top-only device validation: top PocketJS GLES2 + bottom Compose dual-screen state/intent sync, `SAFE_CALL_BLOCKED`, settings disabled guard, `KEYCODE_HOME` recovery, and Compose rollback verified on Retroid Pocket Duo (`192.168.1.21:45659`).
+- [ ] Phase C gated: upstream C runtime and Rust UI are process-global singletons; `dual` stays rejected until instance isolation exists.
+- [x] JVM (63 tests) / JS (7 tests) / native build (20 host cycles) and `connectedDebugAndroidTest` (`2/2 PASS`) on Retroid Pocket Duo.
+- [ ] Excluded/unverified on PoC: real outbound cellular call/SMS (intentionally blocked), `KEYCODE_SLEEP` over wireless ADB, and dedicated hardware gamepad D-pad capture on PocketJS panel.
+
+## 2026-11-27 PocketJS 透视合成、全功能解锁、去下屏输入框与全局号码脱敏
+- [x] 完成方案 1 GLES2 离屏 FBO (720×1280) + 4 点单应性圆角合成 + 60fps 呼吸/回弹 + 反透视触控 + 右上/右下角 GTA HUD 恢复
+- [x] 放开 PocketJS 安全模式限制（恢复下屏控制、手柄快捷键、诊断入口与上屏 `CALL`/`ANSWER`/`HANGUP`/`SEND` 业务分发）
+- [x] 去除下屏拨号键盘上方 `"输入号码"` 输入框，统一将输入内容同步显示于上屏虚拟手机
+- [x] 为上下屏、经典面板、短信横幅与系统通知统一实现第 4–7 位号码 `*` 脱敏（`TopScreenPhoneMasker` / `PhoneMaskVisualTransformation`）
+- [x] 更新 `README.md`、`README_EN.md`（含技术栈说明）、`docs/ARCHITECTURE.md`、`CHANGELOG.md`、`docs/` 报告并清理根目录临时视频后验证通过（70/70 JVM + 8/8 JS + Lint 0 Error）

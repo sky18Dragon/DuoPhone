@@ -22,3 +22,14 @@ keystore.properties
 *.hprof
 raw_logs/
 device_backups/
+
+# Temporary Recordings
+/*.mp4
+/*.mov
+/*.mkv
+/*.webm
+
+# Reproducible PocketJS outputs and downloaded tool/dependency caches
+.pocket-build/
+pocket-ui/node_modules/
+pocket-ui/__pycache__/

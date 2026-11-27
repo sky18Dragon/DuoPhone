@@ -30,3 +30,10 @@
 ## 5. 双屏、实体按键与系统稳定性（Phase 5–6）
 - **UI-001 ~ UI-006**：双屏识别（Display 0 & 2）、双屏显示正确、单屏降级正常、手柄按键映射正确、开/合盖状态处理、休眠唤醒恢复。
 - **SYS-001 ~ SYS-008**：8 小时连续待机、待机收短信/接电话、后台稳定、异常断开恢复、游戏期间来电通知、系统重启恢复、长期无资源泄漏。
+
+## 2026-11-26 — PocketJS UI PoC 验收
+- JVM：v1 snapshot/serialization、严格 intent parsing、invalid/unknown-version rejection、safe call/SMS、Kotlin state mapping。
+- JS：类型检查、guest 合同测试；host double 不作为 native rendering 证据。
+- Native host：真实 QuickJS/Rust core 启动、像素输出、state 改变像素、触摸命中、双触点取消、intent/event、20 次释放循环。
+- Android：default/top/fault APK；真实 GLES2 首帧、Activity recreate、后台恢复 instrumentation；双屏、拔插/不可用、rotation（若允许）、screen off/on、输入与性能清单见 docs/pocketjs/README.md。
+- Level 3 gate：仅在 per-instance core/runtime 完成且 Phase B 实机通过后启用。

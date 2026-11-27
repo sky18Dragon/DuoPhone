@@ -1,14 +1,15 @@
 # 系统架构设计 (`ARCHITECTURE.md`)
 
 ## 1. 技术栈选型
-- **语言**: Kotlin（AGP 9.x 内置 Kotlin）+ 必要时 C/C++ NDK (`ndk 28.2.13676358`, `cmake 3.22.1`)
-- **UI**: Jetpack Compose + Material 3（深色掌机通信主题，天然支持焦点导航与双屏拆分）
-- **并发与响应式**: Kotlin Coroutines + `StateFlow` / `SharedFlow`
-- **持久化**: Room / SQLite（短信、通话记录、联系人缓存、按 IMEI 索引的模块配置备份）
-- **USB 通信**: Android USB Host API（`UsbManager`, `UsbDevice`, `UsbDeviceConnection`, `UsbInterface`, `UsbEndpoint`）
-- **后台保活**: Android Foreground Service (`ModemService`，Android 16 / SDK 36 合规类型：`connectedDevice` + 通话期间 `microphone`/`phoneCall` 评估)
-- **双屏适配**: `DisplayManager` + `Presentation` / Secondary Display Activity（利用实机已验证的 `android.software.activities_on_secondary_displays`）
-- **音频桥接**: 优先 Android 原生 `AudioRecord` / `AudioTrack` / `AudioManager` (`setPreferredDevice` + `AudioDeviceInfo`)，备选模块 PCM 桥接协议与 NDK Oboe/AAudio
+- **核心语言与构建工具**: Kotlin `2.2.10`（AGP `9.0.1` + Gradle `9.1.0` + OpenJDK `25`，`compileSdk 36` / `targetSdk 36` / `minSdk 26`）+ Android NDK `28.2.13676358`
+- **UI 与双屏展示**: Jetpack Compose（BOM `2025.02.00`）+ Material 3（`activity-compose 1.10.1`、`lifecycle 2.8.7`）+ Media3 ExoPlayer `1.5.1`；利用 `DisplayManager`（`Display #0` + `Display #2`）拆分上下双屏，支持单屏降级
+- **可选上屏原生后端 (`-PpocketUi=top`)**: PocketJS `v0.12.0`（Rust `ui-cabi` 核心，`nightly-2026-07-02`）+ QuickJS `2026-06-04` + OpenGL ES 2.0 双通道 FBO 透视合成器（`720×1280` 离屏 FBO、`3×3` 单应性矩阵、圆角 SDF、60fps 手持呼吸/按键回弹与逆透视触控映射），并支持异常自动回退 Compose；`dual` 因上游单例限制保持拒绝
+- **并发与响应式**: Kotlin Coroutines `1.10.1` + `StateFlow` / `SharedFlow`
+- **持久化**: Android 原生 SQLite（`SQLiteOpenHelper` schema v2：短信、通话记录、通讯录缓存、按 IMEI 索引的模块配置备份）
+- **USB 与协议通信**: Android USB Host API（`UsbManager`, `UsbDevice`, `UsbDeviceConnection`）、Clean-room USB ADB 协议栈、3GPP TS 23.040 PDU 编解码
+- **后台保活**: Android Foreground Service (`ModemService`，Android 16 / SDK 36 合规类型：`connectedDevice`)
+- **音频桥接**: 原生 `AudioRecord` / `AudioTrack` / `AudioDeviceCallback`（`80–3400 Hz` 带通滤波、`AEC`/`NS`/`AGC`、NLP 回声压制与热插拔路由）
+- **隐私展示与日志脱敏**: UI 层统一通过 `TopScreenPhoneMasker` + `PhoneMaskVisualTransformation` 将展示号码第 4–7 位脱敏为 `*`（保留底层拨号与联系人匹配真实值），日志层由 `PiiRedactor` 自动脱敏敏感字段
 
 ## 2. 八层模块架构
 ```mermaid

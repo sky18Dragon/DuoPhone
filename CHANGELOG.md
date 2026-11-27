@@ -2,6 +2,15 @@
 
 All notable changes to Duo Phone will be documented in this file.
 
+## [1.1.0] - 2026-11-27
+
+### PocketJS GLES2 Perspective Top UI, Full Mode Unlock & Phone Number Masking
+- **Optional PocketJS + GLES2 Perspective Top Backend (`-PpocketUi=top`)**: Added dual-pass GLES2 FBO perspective compositor (`android_jni.c`, `PocketQuadGeometry.kt`, `PocketSurface.kt`, `PocketTopContent.kt`) combining `720x1280` offscreen PocketJS v0.12.0 + QuickJS rendering with GTA Day/Night backdrop, `3x3` inverse homography rounded-corner quad, 60fps handheld breathing & key-press recoil, inverse-perspective touch mapping, GTA top-right/bottom-right HUD overlays, and automatic Compose fallback (`-PpocketUi=dual` remains rejected due to upstream v0.12.0 singleton).
+- **Full 4G Mode Unlocked**: Removed PoC Safe Mode UI/gamepad/top-intent restrictions across `DeckConsoleHost.kt`, `DeckSettingsPanel.kt`, `MainActivity.kt`, `SecondaryDeckActivity.kt`, `PocketProtocol.kt`, `PocketTopContent.kt`, and `pocket-ui/src/top.js`, allowing direct QDC507 connection, calling (`CALL`/`ANSWER`/`HANGUP`), SMS sending, and hardware diagnostics with the PocketJS top screen active.
+- **Streamlined Bottom Dialer Input**: Removed the redundant `"输入号码"` `BasicTextField` bar from `DeckPhonePanel.kt` so dialer input mirrors directly onto the top virtual phone screen (`dialDisplay` / `smsTarget` / `smsDraftPreview`).
+- **Phone Number Display Masking Across Both Screens**: Added `TopScreenPhoneMasker` and `PhoneMaskVisualTransformation` to mask local digits 4–7 as `*` (e.g., `138****5678`, `+86138****5678`) across top PocketJS UI, top Compose `VirtualPhoneUi`, bottom `BottomDeckScreen` / `DeckPhonePanel` / `DeckSmsPanel`, legacy `CallScreen` / `SmsScreen`, and `SmsNotificationHelper` notifications while keeping underlying dialing, SMS, and contact lookup raw.
+- **Verification**: Expanded automated suites to **70 JVM unit tests** (0 failures), **8 PocketJS contract tests**, **2 connected instrumentation smoke tests**, and **0 Lint errors**, verified on Retroid Pocket Duo (`1b0b84fc`).
+
 ## [1.0.0] - 2026-11-25
 
 ### Release, GTA 6 Dual-Screen UI & Visual Polish

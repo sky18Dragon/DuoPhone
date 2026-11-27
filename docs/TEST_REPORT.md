@@ -57,3 +57,28 @@
 | `SYS-003` ~ `SYS-005`（合盖 `hall_switch` / 灭屏 USB 供电与 AT 心跳保活） | `PASS` | `23:23:55`、`23:26:15`、`23:27:29` 三次合盖/灭屏日志实证：`displayId=0/2 state=1`，`I/DUO_POWER screen_off: modem=READY usbAttached=true`，灭屏期间 `23:27:31` 定时 `AT -> OK (5ms)` 持续存活；开盖秒恢复原界面（`state=2`、`modem=READY`）且全程零断连 |
 | `SYS-001` ~ `SYS-002`, `SYS-006` ~ `SYS-008`（8h 长时待机 / 连续压测） | `NOT_TESTED` | 待后续长时续航压测 |
 | P1 新增交互（来电铃声/振动、通话期 WakeLock、通知栏短信直复、通讯录授权与本地保存） | `PASS` | `23:24`–`23:25` 实机日志实证：`READ_CONTACTS granted=true`、`contacts_reload local=1`；真机呼入触发 `wakelock_acquire`、`ringtone_start: out=2:Retroid Pocket Duo` → `ATA` 接听停铃并启动 `PID=1493` 全双工语音（`zero=0`）→ 对端挂断 `NO CARRIER` 释放 `WakeLock` 与音频路由；收到新短信 `+CMTI: "ME",8` 后通过通知栏直复 `notif_action_reply` → `AT+CMGS=18` → `send_success: Sent 1/1 segments` |
+
+## 2026-11-26 — PocketJS PoC（Level 1/2 Top-Only 实机验证通过，`dual` 阻塞）
+- Baseline clean main @ 0036531；主机 `assembleDebug` / `test` / `lint` PASS。
+- Top-only ARM64 native library（QuickJS/Rust v0.12.0）与 top/fault/compose 三套 APK 及 `androidTest` APK 构建通过；JVM 63 tests、TypeScript、JS 7 tests、真实 host 20 轮生命周期与触控测试通过。
+- Retroid Pocket Duo 实机修复两处宿主/测试缺陷：`PocketTopContent.kt` 修复 `setTag(android.R.id.icon)` 异常并将 `PocketSurface.close()` 移至 `AndroidView.onRelease` 解决 `recreate`/切后台黑屏卡死；`PocketActivitySmokeTest.kt` 拆分为 `selectedBackendSurvivesRecreate` 与 `selectedBackendSurvivesDisplayZeroHomeAndRelaunch`（显式 `--display 0`）。
+- `./gradlew -PpocketUi=top connectedDebugAndroidTest`（有线 USB `1b0b84fc` 终轮复测）：**2/2 PASS**（`selectedBackendSurvivesRecreate` 2.616s、`selectedBackendSurvivesDisplayZeroHomeAndRelaunch` 2.479s，0 failed，0 skipped）。
+- 实机交互与截图验证（`.pocket-build/validation/device/*v3*.png`、`*classic*.png`、`*pure*.png`、`*breath*.png`、`top-fault-fallback.png`、`top-compose-rollback.png`）：
+  - **方案 1（GLES2 离屏 FBO 720×1280 + 四点透视 Quad + 圆角 SDF + 反透视触摸映射 + 60fps 手持呼吸/按键回弹）实机通过**：上屏严格按 `stage_config.json` `quadCorners`（`tl=(872,224) tr=(1163,260) br=(1089,862) bl=(798,826)`）贴合进手握倾斜手机屏幕，并在 native GL 循环实现 4.8s 手持呼吸微动与 0.22s 按键微震回弹（`t0`/`t1` 相隔 1.2s 像素差异 `bg_mean=1.256, phone_mean=2.250`，四边亮度 `(89.6, 74.9, 78.6, 86.8)` 无黑边）。
+  - **纯净手机拨号界面 + 原版 HUD 标识**：`pocket-ui/src/top.js` 对齐原 `VirtualPhoneUi` 圆形 T9 键、信号/4G/电量状态栏，隐藏拨号态底部菜单栏/测试按钮/默认焦点框（短信/设置页与手柄按键按需显现）；Compose 叠层同步恢复右上角 `GtaTopRightHud` 与右下角 `HandheldControlsHud`。
+  - 呼吸态反透视触控实测：倾斜屏幕点按 `'1'` (`914,445`) 触发 `DialDigit -> DIGIT_UPDATED`（`dialLen=1`），此前点按 `'CALL'` 触发 `RequestCall -> SAFE_CALL_BLOCKED`；下屏 `'5'` 双向同步 `'15'`；下屏切短信页同步显示 `UNREAD 0 / DRAFT 0`；`KEYCODE_HOME` 后 `am start` 切回 GLES2 恢复正常（`TOTAL PSS: 165545 KB`）。
+  - 故障注入 APK 日志实证 `PocketHost: fallback=init_failure_injected role=TOP` 且画面回退 Compose（底角提示条在该 t+2s 帧未显现，需关注层级）；默认 Compose APK 回退验证通过后已恢复安装并启动 top-only PoC APK。
+- 明确未覆盖/阻塞项：`dual` 因 upstream 单例继续拒绝；无线调试下未执行 `KEYCODE_SLEEP` 合盖息屏；实体手柄驱动 PocketJS 聚焦未单独截屏验证。
+
+---
+
+## 2026-11-27 — 放开安全模式、下屏去输入框与全应用号码脱敏（第 4–7 位 `*`）
+
+| 校验项 | 命令 | 状态 | 实际结果 |
+| --- | --- | --- | --- |
+| PocketJS JS 合同测试 & TS 类型检查 | `npm --prefix pocket-ui run typecheck && npm --prefix pocket-ui test` | `PASS` | **8 / 8 通过**（含 `masked dial number and SMS draft preview render on top screen`） |
+| `-PpocketUi=top` Debug + AndroidTest + JVM 单测 + Lint | `./gradlew -PpocketUi=top assembleDebug assembleDebugAndroidTest test lint` | `PASS` | **70 / 70 JVM 单元测试通过**（0 失败，0 跳过；含 `TopScreenPhoneMaskerTest` 5 项与更新后的 `PocketProtocolTest`），Lint **0 Error** |
+| Instrumentation 真机测试 (`1b0b84fc`) | `ANDROID_SERIAL=1b0b84fc ./gradlew -PpocketUi=top connectedDebugAndroidTest` | `PASS` | 放开安全模式与去输入框后 **2 / 2 通过**（注：此前一次受前序屏状态影响失败后于唤醒态复测通过） |
+| 实机交互截图核验 (`1b0b84fc`) | 下屏点击 `13812345678` + 截图比对 | `PASS` | 下屏 `"输入号码"` 输入框已移除，点击 `连接 4G` 不再弹安全模式拦截；上屏 PocketJS 手机显示 `138****5678`（点击 `清空` 复位后日志记录 `dialLen=0`） |
+
+> 注：本次未在实机注入模拟/真实非空通话记录、通讯录、短信列表或通知弹窗并截屏，相关列表/卡片/输入框及通知脱敏逻辑由源码检查与 `TopScreenPhoneMaskerTest` / JVM 单测覆盖；接上 QDC507 4G 模块后的实机拨号/短信将在真机插入模块后验证。

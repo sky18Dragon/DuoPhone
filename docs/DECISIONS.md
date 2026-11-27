@@ -25,3 +25,10 @@
 - **日期**：2026-11-24
 - **背景**：DJOneHubNative 实测表明重启后盲探 Diag `IF0` 会挂起 USB；而误 claim ADB (`FF/42/01`) 或 UAC (`01/*/*`) 会破坏 Phase 4 语音运行时与音频桥接。
 - **决策**：`UsbInterfaceClassifier` 硬过滤非串口类与 ADB 描述符，并按 `IF2 → IF3 → 其他非 IF0 候选` 排序探测。
+
+## 2026-11-26 — PocketJS host spike
+- Pin PocketJS v0.12.0 / d3f0be0c7739ea704ca25d8b5158581bb176abc6 (MIT). Current main no longer has hosts/android; v0.12.0 contains inspected Android adapter.
+- Keep MainActivity, SecondaryDeckActivity, DualDisplayHelper, permissions, Service and all communication code. Embed native GLES2 content only under an opt-in debug build flag; Compose remains default.
+- Top-only first. engine/quickjs-c/pocket_runtime.c static runtime/context and engine/ui-cabi/src/lib.rs static mut UI are singleton APIs. Reject concurrent ownership instead of fabricating multi-handle support.
+- Small versioned JSON protocol. Existing Kotlin StateFlows remain authoritative; no modem capability is passed to JS. Outbound call/SMS intents always produce safe-mode events.
+- Initial ADB scan: no device. Build success cannot establish a device acceptance level.

@@ -18,7 +18,9 @@
 
 ### 上屏视觉舞台（`Display #0` · `1920×1080`）
 
-上屏呈现第一人称手持智能手机的沉浸式通信舞台：支持 **日间/夜间主题自适应渲染**、四点透视同调贴合（`rx=0°, ry=0°, rz=+7°`）、自然微倾呼吸感以及真实信号格数 / 电量 / 短信气泡联动。
+上屏呈现第一人称手持智能手机的沉浸式通信舞台，提供两套渲染后端并在同一状态机下自动保持实时同步：
+- **默认 Compose 后端 (`TopStageScreen` / `VirtualPhoneUi`)**：支持 **日间/夜间主题自适应渲染**、四点透视同调贴合（`rx=0°, ry=0°, rz=+7°`）、手持微倾呼吸感、短信对话气泡以及真实信号格数 / 电量联动（`release` 与默认 `debug` 构建启用）。
+- **可选 PocketJS + GLES2 原生后端 (`-PpocketUi=top`)**：基于 **PocketJS `v0.12.0` + QuickJS + Rust `ui-cabi` + OpenGL ES 2.0 双通道离屏 FBO**（`720×1280` FBO + `3×3` 透视单应性合成 + 圆角 SDF + 60fps 呼吸/按键回弹 + 逆透视触控映射），运行纯正极简数字拨号盘与短信/设置页，并叠加右上角 `$0 / $3,880` 与右下角手柄按键提示 HUD；任意加载/初始化/首帧超时异常自动无缝回退 Compose。
 
 | 日间拨号舞台 | 夜间拨号舞台 | 短信对话视图 |
 | :---: | :---: | :---: |
@@ -26,7 +28,7 @@
 
 ### 下屏主控台（`Display #2` · `1280×960`）
 
-下屏提供掌机拇指友好的高对比度控制台，包含 **拨号与通话记录/通讯录、短信会话与快捷回复、外观与硬件诊断** 三大主菜单，并在无外接副屏时自动支持单屏切换降级。
+下屏提供掌机拇指友好的高对比度控制台，**已移除冗余的“输入号码”输入框**（拨号输入直接实时同步显示在上屏虚拟手机屏幕），包含 **拨号与通话记录/通讯录、短信会话与快捷回复、外观与硬件诊断** 三大主菜单，并在无外接副屏时自动支持单屏切换降级。
 
 | 电话控制台（拨号 / 记录 / 通讯录） | 短信控制台（会话 / 写信 / 验证码） | 系统设置与可逆诊断入口 |
 | :---: | :---: | :---: |
@@ -66,13 +68,28 @@
 
 > 在 **单屏模式**（非双屏设备或单屏预览时），长按或通过上屏/下屏切换按钮即可在沉浸式视觉舞台与主控台之间自由切换。
 
-### 3. 电话与双向 VoLTE 语音桥接
-- **拨号与联系人匹配**：下屏拨号盘输入号码后实时同步至上屏虚拟手机；支持本地 SQLite 通讯录 CRUD 及一键同步 Android 系统通讯录（`READ_CONTACTS`），自动匹配来/去电联系人名称。
+### 3. 电话、隐私脱敏与双向 VoLTE 语音桥接
+- **拨号与联系人匹配**：下屏拨号盘与上屏虚拟手机实时双向同步（已去除下屏冗余输入框）；支持本地 SQLite 通讯录 CRUD 及一键同步 Android 系统通讯录（`READ_CONTACTS`），自动匹配来/去电联系人名称。
+- **全界面号码展示脱敏 (`TopScreenPhoneMasker` / `PhoneMaskVisualTransformation`)**：上下屏拨号显示、通话页、通话记录、通讯录、短信会话列表/标题、经典诊断面板、短信横幅及来电/短信通知均将号码本地第 4–7 位统一脱敏显示为 `*`（如 `138****5678`、`+86138****5678`），而底层拨号、`AT+CMGS` 发短信、联系人匹配与会话过滤仍使用原始完整号码，兼顾隐私展示与真实通信。
 - **非幂等保护**：严禁对 `ATD` 拨号、`AT+CMGS` 发短信或模块复位命令做无条件自动重试，避免重复扣费或重复呼出。
 - **双向 PCM 音频桥接 (`AndroidAudioBridge`)**：
   - 支持 USB UAC + 本地麦克风/听筒/扬声器/3.5mm 有线耳机/蓝牙耳机动态热插拔自动路由。
   - 内置 `80 Hz` 高通 + `3400 Hz` 低通带通滤波、语音增益调节、硬件 `AEC`/`NS`/`AGC` 与免提回声压制（NLP）。
   - 系统通知栏支持来电直达 **接听 / 拒接 / 挂断**，响铃独立锁定掌机本地音频输出，不被 UAC 设备劫持。
+
+---
+
+## 🧱 技术栈
+
+| 层级 / 模块 | 核心技术与版本 | 说明 |
+| --- | --- | --- |
+| **Android 平台与构建** | Kotlin `2.2.10`、AGP `9.0.1`、Gradle `9.1.0`、OpenJDK `25` | `compileSdk 36` / `targetSdk 36` / `minSdk 26`，开启 Release R8 压缩与资源裁剪 |
+| **UI 与双屏架构** | Jetpack Compose（BOM `2025.02.00`）、Material 3、`activity-compose 1.10.1`、`lifecycle 2.8.7` | `DisplayManager` 异显调度（`Display #0` 上屏舞台 + `Display #2` 下屏控制台），支持单屏回退 |
+| **视频与音效交互** | AndroidX Media3 ExoPlayer `1.5.1`、`AudioTrack` UI 合成音效 | 开场视频播放、手柄音效与触觉反馈 |
+| **可选上屏原生引擎 (`-PpocketUi=top`)** | PocketJS `v0.12.0`（Rust `ui-cabi`，`nightly-2026-07-02`）、QuickJS `2026-06-04`、NDK `28.2.13676358` C/JNI、OpenGL ES 2.0 | 双通道离屏 FBO（`720×1280`）+ `3×3` 透视单应性合成 + 圆角 SDF + 60fps 呼吸/按键回弹 + 逆透视触控；Python 3 / Pillow `11.3.0` 烘焙 Inter 字库，TypeScript `5.9.3` 类型校验 |
+| **并发与数据持久化** | Kotlin Coroutines `1.10.1`（`StateFlow` / `SharedFlow`）、Android 原生 SQLite（`SQLiteOpenHelper` v2） | 无锁串行化 AT 状态流；本地持久化短信、通话记录、通讯录与按 IMEI 备份的 USB 配置 |
+| **硬件通信与语音 DSP** | Android USB Host API、Clean-room USB ADB 传输层、3GPP TS 23.040 PDU 编解码、`AudioRecord` / `AudioTrack` / `AudioDeviceCallback` | 安全接口探测、`atEngine` 串行队列 + URC 分流、`80–3400 Hz` 带通滤波、`AEC`/`NS`/`AGC`、NLP 回声压制 |
+| **自动化测试与静态检查** | JUnit 4 `4.13.2` + `kotlinx-coroutines-test`、Node `node:test`、AndroidX Instrumentation、Android Lint | **70 项 JVM 单元测试** + **8 项 PocketJS 合同测试** + **2 项真机 Instrumentation 冒烟测试** + 0 Error Lint |
 
 ### 4. 3GPP PDU 短信与验证码识别
 - **中英文与长短信**：原生 3GPP TS 23.040 PDU 编解码，支持 GSM 7-bit、UCS2 中文及 Emoji UTF-16 代理对安全切分、长短信 UDH 乱序重组与字母发件人解析。
@@ -101,8 +118,8 @@
 
 1. **硬件逆向与合规调研**：由 Gemini 协助梳理 Retroid Pocket Duo（Android 16 / 双内屏 / 无系统 Telecom 服务）与 DJI QDC507（`0x2CA3:0x4006`）协议规范，审查参考开源项目许可证并确定非 Root 可逆架构方案（`ADR-001` ~ `ADR-005`）。
 2. **核心工程编码**：独立生成 8 层模块化 Kotlin / Jetpack Compose 代码库，包括无锁/串行化 AT 引擎、3GPP PDU 编解码器、USB ADB 协议栈、PCM 重采样/回声抑制滤波器与 SQLite 持久化层。
-3. **测试驱动与真机联调**：编写 **55 项 JVM 单元测试** 覆盖协议解析、短信编解码、电话状态机、音频滤波与双屏快捷键逻辑，并通过真机 `adb logcat` 采集持续修复并发竞态与热插拔重连问题。
-4. **GTA 6 视觉风格与图标共创**：利用 Gemini 生图与 CoreGraphics 管线构建日/夜双主题第一人称手持画面、四点单应性矩阵投影对齐（`PerspectiveQuadHost`）、真实感虚拟手机 OS 界面以及 Vice Sunset 自适应应用图标。
+3. **测试驱动与真机联调**：编写 **70 项 JVM 单元测试**、**8 项 PocketJS JS 合同测试**与 **2 项真机 Instrumentation 冒烟测试** 覆盖协议解析、号码脱敏、短信编解码、电话状态机、音频滤波、透视几何与双屏快捷键逻辑，并通过真机 `adb logcat` 采集持续修复并发竞态与热插拔重连问题。
+4. **GTA 6 视觉风格与原生透视合成**：利用 Gemini 生图与 CoreGraphics / OpenGL ES 2.0 管线构建日/夜双主题第一人称手持画面、四点单应性矩阵投影对齐（`PerspectiveQuadHost` / `PocketQuadGeometry`）、真实感虚拟手机 UI（Compose 与可选 PocketJS 原生引擎）以及 Vice Sunset 自适应应用图标。
 5. **文档体系沉淀**：自动维护中英文 `README`、`CHANGELOG.md`、架构决策文档与测试验收报告。
 
 ---
@@ -113,6 +130,7 @@
 - **JDK**: OpenJDK 25（或兼容 AGP 9.x 的 JDK）
 - **Android SDK**: `compileSdk 36` / `targetSdk 36` / `minSdk 26` / Build Tools `36.0.0`
 - **构建工具**: Gradle 9.1.0 + AGP 9.0.1（项目已自带 Gradle Wrapper）
+- **可选 PocketJS 原生后端（仅 `-PpocketUi=top` 需要）**: Rust `nightly-2026-07-02`（`aarch64-linux-android`）、Android NDK `28.2.13676358`、Python 3 + `Pillow 11.3.0`、Node.js（`TypeScript 5.9.3`）；详见 [`docs/pocketjs/README.md`](docs/pocketjs/README.md)
 
 ### 常用命令
 
@@ -120,14 +138,19 @@
 export JAVA_HOME=/path/to/jdk-25
 export ANDROID_HOME=/path/to/Android/sdk
 
-# 运行全部 55 项单元测试
+# 运行全部 70 项 JVM 单元测试与 PocketJS 8 项 JS 测试
 ./gradlew testDebugUnitTest
+npm --prefix pocket-ui test
 
 # 运行 Android Lint 静态检查
 ./gradlew lintDebug
 
-# 构建 Debug APK
+# 构建默认 Compose Debug APK
 ./gradlew assembleDebug
+
+# 可选：构建上屏 PocketJS + GLES2 透视合成 Debug APK（下屏保持 Compose，支持完整 4G 通信）
+# 说明：-PpocketUi=dual 因上游 PocketJS v0.12.0 全局单例限制保持拒绝构建
+./gradlew -PpocketUi=top assembleDebug
 ```
 
 ### 正式 Release 签名打包
@@ -159,20 +182,25 @@ adb logcat -s DUO_USB DUO_AT DUO_URC DUO_SMS DUO_CALL DUO_AUDIO DUO_MODEM DUO_DI
 ## 📁 目录结构
 
 ```text
-app/src/main/
-├── assets/gta/                # 内置 GTA 6 日/夜舞台素材与四点透视校准配置
-├── java/com/duophone/app/
-│   ├── ui/                    # 双屏分发助手、传统工程诊断面板（可折叠）
-│   │   └── gta/               # 上屏沉浸式舞台 (TopStageScreen / PerspectiveQuadHost / VirtualPhoneUi) & 下屏主控台
-│   ├── stage/                 # 舞台状态协调器、按键动画与资源加载配置
-│   ├── domain/                # 电话状态机、Modem 状态管理、短信业务控制器
-│   ├── service/               # ModemService 前台服务、通知快捷接听/回复广播
-│   ├── protocol/              # AT Engine、URC 分流解析、3GPP PDU 短信编解码
-│   ├── audio/                 # 双向 PCM 音频桥接、带通滤波/AEC、UI 音效与本地响铃
-│   ├── device/                # USB Host 安全探测、USB ADB 客户端、QDC507 备份与可逆语音运行时
-│   ├── data/                  # SQLite 短信/通话记录/通讯录仓库与号码匹配
-│   └── diagnostics/           # 分类脱敏日志 (DuoLogger) 与设备硬件探测
-└── res/                       # Vice Sunset 自适应与多密度桌面图标 (mdpi ~ xxxhdpi)
+├── app/src/main/
+│   ├── assets/gta/            # 内置 GTA 6 日/夜舞台素材与四点透视校准配置
+│   ├── cpp/pocket/            # 可选 PocketJS + QuickJS + GLES2 FBO 透视合成 JNI 桥接与 host_smoke
+│   ├── java/com/duophone/app/
+│   │   ├── ui/                # 双屏分发助手、号码 VisualTransformation、传统工程诊断面板
+│   │   │   └── gta/           # 上屏沉浸式舞台 (TopStageScreen / PerspectiveQuadHost / VirtualPhoneUi) & 下屏主控台
+│   │   ├── pocket/            # 可选上屏 PocketJS 协议映射、GLES2 Surface 宿主与四点几何计算
+│   │   ├── stage/             # 舞台状态协调器、号码展示脱敏 (TopScreenPhoneMasker)、音效与资源加载
+│   │   ├── domain/            # 电话状态机、Modem 状态管理、短信业务控制器
+│   │   ├── service/           # Foreground ModemService、脱敏通知与快捷接听/回复广播
+│   │   ├── protocol/          # AT Engine、URC 分流解析、3GPP PDU 短信编解码
+│   │   ├── audio/             # 双向 PCM 音频桥接、带通滤波/AEC、UI 音效与本地响铃
+│   │   ├── device/            # USB Host 安全探测、USB ADB 客户端、QDC507 备份与可逆语音运行时
+│   │   ├── data/              # SQLite 短信/通话记录/通讯录仓库与号码匹配
+│   │   └── diagnostics/       # 分类脱敏日志 (DuoLogger) 与设备硬件探测
+│   └── res/                   # Vice Sunset 自适应与多密度桌面图标 (mdpi ~ xxxhdpi)
+├── pocket-ui/                 # 可选 PocketJS 上屏 UI (top.js / 字库烘焙 build.py / TS 类型与 JS 合同测试)
+├── scripts/                   # build-pocketjs.sh 与 test-pocketjs-host.sh 构建验证脚本
+└── docs/pocketjs/             # PocketJS 架构与实机验证说明及 MIT/OFL 开源协议文本
 ```
 
 ---
@@ -184,12 +212,12 @@ app/src/main/
 - [硬件调研档案](docs/HARDWARE_RESEARCH.md) · [Retroid 实机兼容性](docs/RETROID_DUO_COMPATIBILITY.md) · [双屏设计](docs/DUAL_SCREEN_DESIGN.md)
 - [USB 接口规范](docs/USB_INTERFACE.md) · [AT 指令清单](docs/AT_COMMANDS.md) · [短信 PDU 协议](docs/SMS_PROTOCOL.md) · [QDC507 协议](docs/QDC507_PROTOCOL.md)
 - [语音运行时方案](docs/VOICE_RUNTIME.md) · [Android 音频桥接](docs/AUDIO_BRIDGE.md) · [电源与合盖管理](docs/POWER_MANAGEMENT.md)
-- [测试计划](docs/TEST_PLAN.md) · [测试报告](docs/TEST_REPORT.md) · [版本变更日志](CHANGELOG.md)
+- [测试计划](docs/TEST_PLAN.md) · [测试报告](docs/TEST_REPORT.md) · [PocketJS 上屏后端报告](docs/pocketjs/README.md) · [版本变更日志](CHANGELOG.md)
 
 ---
 
 ## 📄 开源协议与免责声明
 
-- **开源协议**：本项目主代码基于 **[MIT License](LICENSE)** 开源；第三方参考项目版权与协议边界详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 与 [`docs/LICENSE_AUDIT.md`](docs/LICENSE_AUDIT.md)。
-- **隐私安全**：程序默认对手机号、IMEI/IMSI/ICCID、短信正文与验证码做本地日志脱敏，所有业务数据仅保存在设备本地，无任何第三方上传行为。
+- **开源协议**：本项目主代码基于 **[MIT License](LICENSE)** 开源；第三方参考项目版权与协议边界详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 与 [`docs/LICENSE_AUDIT.md`](docs/LICENSE_AUDIT.md)；可选 PocketJS (`MIT`)、QuickJS (`MIT`) 与 Inter 字体 (`OFL`) 协议文本位于 [`docs/pocketjs/licenses/`](docs/pocketjs/licenses/)。
+- **隐私安全**：程序默认在上下屏 UI、通知及本地日志中对手机号（第 4–7 位展示为 `*`）、IMEI/IMSI/ICCID、短信正文与验证码做脱敏保护，所有业务数据仅保存在设备本地，无任何第三方上传行为。
 - **免责声明**：本项目为独立非官方开源项目，与 DJI、Quectel 及 Retroid/Moorechip 无隶属关系。请勿在未完成运营商完整合规认证前将本项目作为紧急呼叫（`110` / `119` / `120` / `911` / `112`）的唯一依赖设备。
